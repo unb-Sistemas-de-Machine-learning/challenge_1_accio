@@ -1,0 +1,19 @@
+site_name: Sistemas de Machine Learning Accio
+
+nav:
+  - Introdução: Introducao.md
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Modo claro
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Modo escuro
