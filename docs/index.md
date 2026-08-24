@@ -38,7 +38,19 @@ Taxa de confidence do modelo acima de 50% significa que deu certo.
 * 4-) Quão viável é a implementação de um bot em grupos do Whatsapp em um grupo universitário?
 > a
 * 5-) Quais guardrails devem ser definidos para a privacidade de usuários?
-> a
+> Ingestão e escuta:
+> - Nunca deve processar, analizar ou registrar mensagens que não sejam direcionadas a ele via menção
+> - Sanitização prévia de entrada: Mascaram dados pessoais identificáveis comuns em chats
+>
+> Armazenhamento e logs:
+> - Não persistência de mensagens brutas
+> - Anonimização de identificadores de rede
+>
+> Interação com LLM e provedores de nuvem:
+> - Adicionar instruções para que a IA nunca repita, exponha ou confirme dados pessoais sensíveis
+>
+> Transparência e concentimento (LGPD):
+> - Explicar quais dados são processados temporariamente e explicar como são descartados após a resposta
 * 6-) Quais as diretrizes das plataformas para a integração de bots em grupo?
 > a
 * 7-) Como ele buscará os dados? consulta WEB ou em base de conhecimentos (RAG)
