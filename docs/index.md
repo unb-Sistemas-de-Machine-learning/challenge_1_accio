@@ -23,9 +23,16 @@ Taxa de confidence do modelo acima de 50% significa que deu certo.
 # Guiding Questions
 
 * 1-) Quais as fontes, links e endpoints que serão usadas pelos agentes para consulta 
-> a
+> - https://noticias.unb.br - UnB Notícias - HTML
+> - https://www.unb.br/ - Universidade de Brasília - HTML
+> - https://www.deg.unb.br/ - Decanato de Graduação - HTML
+> - https://saa.unb.br/ - Secretaria de Administração Acadêmica - HTML e PDFs para informativos
+> - https://dpg.unb.br - Decanato de Pós-graduação - HTML
 * 2-) Será utilizada arquitetura multi-agente, se sim quais os agentes? 
-> a
+> Multi-agentes:
+> - Supervisor, recebe o prompt e rapassa para o consultor
+> - Consultor, Devolve a precisão utilizando a base de conhecimentos RAG
+
 * 3-) Qual o modelo de LLM será utilizado (acessível e barato)?
 > a
 * 4-) Quão viável é a implementação de um bot em grupos do Whatsapp em um grupo universitário?
@@ -35,4 +42,4 @@ Taxa de confidence do modelo acima de 50% significa que deu certo.
 * 6-) Quais as diretrizes das plataformas para a integração de bots em grupo?
 > a
 * 7-) Como ele buscará os dados? consulta WEB ou em base de conhecimentos (RAG)
-> a
+> RAG com WEB Scraping, feito a cada 1 hora.
