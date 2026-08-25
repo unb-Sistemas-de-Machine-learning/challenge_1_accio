@@ -21,9 +21,9 @@ Gerenciar a persistência de embeddings vetoriais e metadados contextuais no Qdr
 ```bash
 # Subir o Qdrant via Docker Compose
 docker compose up -d qdrant
-
-    Dashboard web do Qdrant: http://localhost:6333/dashboard
 ```
+Dashboard web do Qdrant: http://localhost:6333/dashboard
+
 ---
 # 🧪 Como Testar Este Módulo
 
