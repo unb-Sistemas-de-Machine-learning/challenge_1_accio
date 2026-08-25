@@ -12,9 +12,7 @@ Disponibilizar as interfaces de chat para a comunidade universitária (Telegram 
 
 ## 📂 Estrutura de Arquivos
 * `privacy.py`: Sanitizador de PII que remove CPFs, matrículas UnB (`\d{9}`), telefones e e-mails antes de qualquer log ou envio para a LLM.
-* `telegram_bot.py`: Implementação do bot do Telegram com handlers para `/checar`, `/privacidade` e menções diretas em grupos.
-* `whatsapp_bot.py`: Conector de WhatsApp com filtro estrito de menção (`@bot`) e envio de respostas via *quoted message*.
-
+* `telegram_bot.py`: Implementação do bot do Telegram com handlers para `/checar`, `/privacidade` e menções diretas em grupos e filtro de menção (`@bot`) para envio de mensagens via *quoted message*.
 ---
 
 ## 🔒 Regras de Privacidade
