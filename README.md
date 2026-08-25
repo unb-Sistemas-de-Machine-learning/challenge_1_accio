@@ -1,4 +1,4 @@
-# challenge_1_accio
+# Fato UnB - Bot checador de fatos da UnB no Telegram
 
 Challenge 1 - Equipe Accio - Sistemas de Machine Learning 2026/02
 
