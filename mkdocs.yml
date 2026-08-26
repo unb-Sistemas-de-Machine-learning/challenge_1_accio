@@ -6,13 +6,6 @@ theme:
   name: material
   language: pt-BR
   palette:
-    # Modo Claro
-    - scheme: default
-      primary: indigo
-      accent: indigo
-      toggle:
-        icon: material/brightness-7
-        name: Mudar para modo escuro
     # Modo Escuro
     - scheme: slate
       primary: indigo
@@ -20,6 +13,13 @@ theme:
       toggle:
         icon: material/brightness-4
         name: Mudar para modo claro
+    # Modo Claro
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Mudar para modo escuro
   features:
     - navigation.instant
     - navigation.tracking
