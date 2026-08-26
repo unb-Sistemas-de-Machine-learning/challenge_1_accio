@@ -15,7 +15,7 @@
     Reduzir a incerteza e mitigar a propagação de boatos em grupos e comunidades universitárias da UnB.
 
     **Métrica de Sucesso:**
-    * Taxa de retenção $\ge 50\%$ (mais de 50% dos usuários que acionaram o bot retornam para consultá-lo pelo menos 3 vezes).
+    * Taxa de retenção **≥ 50%** (mais de 50% dos usuários que acionaram o bot retornam para consultá-lo pelo menos 3 vezes).
 
 -   :material-robot:{ .lg .middle } **Objetivo de Machine Learning**
 
@@ -24,7 +24,7 @@
     Verificar a veracidade e consistência de afirmações textuais confrontando-as estritamente com os dados e informativos oficiais da UnB via RAG.
 
     **Métrica de Sucesso:**
-    * Confiança (*confidence score*) do modelo de veredito $\ge 50\%$ nas análises sobre a base indexada.
+    * Confiança (*confidence score*) do modelo de veredito **≥ 50%** nas análises sobre a base indexada.
 
 </div>
 
@@ -40,26 +40,21 @@
 ## 🏗️ Arquitetura Geral do Sistema
 
 ```mermaid
-flowchart LR
-    A[Portais UnB / RSS] -->|Scraping a cada 1h| B(Ingestão & Sanitização PII)
-    B -->|RawDocument| C(Chunking & FastEmbed)
-    C -->|Vetores 384d| D[(Qdrant Vector DB)]
-    E[Usuário / Grupo] -->|Menção ao Bot| F(Agente Supervisor)
-    F -->|Repasse de Query| G(Agente Consultor RAG)
-    D <-->|Recuperação Híbrida| G
-    G -->|Veredito Estruturado| E
+flowchart TD
+    subgraph Ingestao ["1. Ingestão e Indexação Periódica (a cada 1h)"]
+        A[Portais Oficiais UnB & Feeds RSS] -->|Scraping Automatizado| B(Ingestão & Sanitização de PII)
+        B -->|RawDocument| C(Chunking Semântico com Injeção de Contexto)
+        C -->|fastembed / ONNX| D[(Qdrant Vector DB)]
+    end
+
+    subgraph Consulta ["2. Atendimento e Fact-Checking Reativo"]
+        E[Estudante / Grupo Telegram] -->|Menção @bot ou /checar| F[Agente Supervisor]
+        F -->|Query Sanitizada| G[Agente Consultor RAG]
+        D <-->|Busca Híbrida: Vetorial + BM25| G
+        G -->|Prompt Estrito + Contexto Oficial| H[LLM: Gemini / Modelo Local]
+        H -->|VereditoJSON Estruturado| E
+    end
 ```
-
-## 👥 Divisão de Módulos & Responsabilidades
-
-| Módulo | Escopo & Descrição | Responsável |
-|---|---|---|
-| `ingestion` | Scrapers periódicos (1h), parsers HTML/PDF e sanitização de PII. | Pedro Henrique Inacio dos Santos |
-| `storage` | Configuração do Qdrant, schemas de vetores e indexação híbrida. | Angelo Araujo Cordova |
-| `rag` | Chunking semântico, embeddings locais (fastembed) e motor de vereditos. | Yan Santos Rodrigues |
-| `interfaces` | Agente Supervisor, bots para Telegram/WhatsApp e API REST FastAPI. | Rodrigo Atila Tavares de Oliveira |
-| `evaluation` | Métricas de retenção, avaliação de alucinação (RAGAS) e acurácia. | Matheus Pinheiro |
-
 ## 🚀 Como Executar Localmente
 
 ### 1. Clonar o Repositório e Sincronizar Dependências
