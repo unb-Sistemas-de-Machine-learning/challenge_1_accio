@@ -1,57 +1,84 @@
-# Objetivo de Negócio
+# 🏛️ FatoUnB — Inteligência e Fact-Checking Universitário
 
-Reduzir incerteza em informações compartilhadas em grupos da UnB
+> **Sistema automatizado de verificação factual, combate à desinformação e consulta a fontes oficiais da Universidade de Brasília (UnB).**
 
-## Métrica: 
+---
 
-Taxa de retenção dos usuários no bot (vezes que o usuário voltou), mais que 50%  dos usuários voltaram ao bot mais de 3 vezes
+## 🎯 Objetivos do Projeto
 
-# Objetivo de ML
+<div class="grid cards" markdown>
 
-Verificar se uma mensagem possui veracidade com base nos dados de informativos de canais oficiais da Universidade de Brasília
+-   :material-briefcase-check:{ .lg .middle } **Objetivo de Negócio**
 
-## Métrica: 
+    ---
 
-Taxa de confidence do modelo acima de 50% significa que deu certo.
+    Reduzir a incerteza e mitigar a propagação de boatos em grupos e comunidades universitárias da UnB.
 
-# Escopo
+    **Métrica de Sucesso:**
+    * Taxa de retenção $\ge 50\%$ (mais de 50% dos usuários que acionaram o bot retornam para consultá-lo pelo menos 3 vezes).
 
-> Nosso sistema trata mensagens de texto relacionadas a informações da UnB de grupos no wpp/telegram em português 
-> 
-> Não trata imagens, mensagens de audio e chamadas
+-   :material-robot:{ .lg .middle } **Objetivo de Machine Learning**
 
-# Guiding Questions
+    ---
 
-* 1-) Quais as fontes, links e endpoints que serão usadas pelos agentes para consulta 
-> - https://noticias.unb.br - UnB Notícias - HTML
-> - https://www.unb.br/ - Universidade de Brasília - HTML
-> - https://www.deg.unb.br/ - Decanato de Graduação - HTML
-> - https://saa.unb.br/ - Secretaria de Administração Acadêmica - HTML e PDFs para informativos
-> - https://dpg.unb.br - Decanato de Pós-graduação - HTML
-* 2-) Será utilizada arquitetura multi-agente, se sim quais os agentes? 
-> Multi-agentes:
-> - Supervisor, recebe o prompt e rapassa para o consultor
-> - Consultor, Devolve a precisão utilizando a base de conhecimentos RAG
+    Verificar a veracidade e consistência de afirmações textuais confrontando-as estritamente com os dados e informativos oficiais da UnB via RAG.
 
-* 3-) Qual o modelo de LLM será utilizado (acessível e barato)?
-> a
-* 4-) Quão viável é a implementação de um bot em grupos do Whatsapp em um grupo universitário?
-> a
-* 5-) Quais guardrails devem ser definidos para a privacidade de usuários?
-> Ingestão e escuta:
-> - Nunca deve processar, analizar ou registrar mensagens que não sejam direcionadas a ele via menção
-> - Sanitização prévia de entrada: Mascaram dados pessoais identificáveis comuns em chats
->
-> Armazenhamento e logs:
-> - Não persistência de mensagens brutas
-> - Anonimização de identificadores de rede
->
-> Interação com LLM e provedores de nuvem:
-> - Adicionar instruções para que a IA nunca repita, exponha ou confirme dados pessoais sensíveis
->
-> Transparência e concentimento (LGPD):
-> - Explicar quais dados são processados temporariamente e explicar como são descartados após a resposta
-* 6-) Quais as diretrizes das plataformas para a integração de bots em grupo?
-> a
-* 7-) Como ele buscará os dados? consulta WEB ou em base de conhecimentos (RAG)
-> RAG com WEB Scraping, feito a cada 1 hora.
+    **Métrica de Sucesso:**
+    * Confiança (*confidence score*) do modelo de veredito $\ge 50\%$ nas análises sobre a base indexada.
+
+</div>
+
+---
+
+## 🔍 Escopo do Sistema
+
+* **Entradas Suportadas:** Mensagens de texto em português compartilhadas em grupos do Telegram/WhatsApp relacionadas a editais, calendários acadêmicos, avisos da Reitoria e serviços da UnB (RU, bibliotecas, transporte).
+* **Fora de Escopo:** Processamento de imagens (OCR de prints), transcrição de mensagens de áudio, chamadas de voz e consultas sem relação com o ecossistema institucional da UnB.
+
+---
+
+## 🏗️ Arquitetura Geral do Sistema
+
+```mermaid
+flowchart LR
+    A[Portais UnB / RSS] -->|Scraping a cada 1h| B(Ingestão & Sanitização PII)
+    B -->|RawDocument| C(Chunking & FastEmbed)
+    C -->|Vetores 384d| D[(Qdrant Vector DB)]
+    E[Usuário / Grupo] -->|Menção ao Bot| F(Agente Supervisor)
+    F -->|Repasse de Query| G(Agente Consultor RAG)
+    D <-->|Recuperação Híbrida| G
+    G -->|Veredito Estruturado| E
+```
+
+## 👥 Divisão de Módulos & Responsabilidades
+
+| Módulo | Escopo & Descrição | Responsável |
+|---|---|---|
+| `ingestion` | Scrapers periódicos (1h), parsers HTML/PDF e sanitização de PII. | Pedro Henrique Inacio dos Santos |
+| `storage` | Configuração do Qdrant, schemas de vetores e indexação híbrida. | Angelo Araujo Cordova |
+| `rag` | Chunking semântico, embeddings locais (fastembed) e motor de vereditos. | Yan Santos Rodrigues |
+| `interfaces` | Agente Supervisor, bots para Telegram/WhatsApp e API REST FastAPI. | Rodrigo Atila Tavares de Oliveira |
+| `evaluation` | Métricas de retenção, avaliação de alucinação (RAGAS) e acurácia. | Matheus Pinheiro |
+
+## 🚀 Como Executar Localmente
+
+### 1. Clonar o Repositório e Sincronizar Dependências
+
+```bash
+git clone https://github.com/unb-Sistemas-de-Machine-learning/challenge_1_accio.git
+
+cd challenge_1_accio
+
+uv sync
+
+uv pip install -e .
+```
+
+### 2. Rodar a Suíte de Testes
+```bash
+uv run pytest tests/ -v
+```
+### 3. Visualizar a Documentação
+```bash
+uv run mkdocs serve
+```
