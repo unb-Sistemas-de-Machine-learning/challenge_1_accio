@@ -6,13 +6,6 @@ theme:
   name: material
   language: pt-BR
   palette:
-    # Modo Claro
-    - scheme: default
-      primary: indigo
-      accent: indigo
-      toggle:
-        icon: material/brightness-7
-        name: Mudar para modo escuro
     # Modo Escuro
     - scheme: slate
       primary: indigo
@@ -20,6 +13,13 @@ theme:
       toggle:
         icon: material/brightness-4
         name: Mudar para modo claro
+    # Modo Claro
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Mudar para modo escuro
   features:
     - navigation.instant
     - navigation.tracking
@@ -59,7 +59,18 @@ markdown_extensions:
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 nav:
-  - Início: index.md
-  - Guiding Questions: guiding_questions.md
+  - Início: 
+    - index.md
+  - Guiding Questions: 
+    - guiding_questions.md
   - Módulos:
-      - Pipeline RAG & Checagem: modulos/rag.md
+      - Coleta de Dados: modulos/01-coleta-dados.md
+      - Banco Vetorial: modulos/02-banco-vetorial.md
+      - Pipeline RAG & Checagem: modulos/03-pipeline-rag.md
+      - Infra e Modelos: modulos/04-infra-modelos-local.md
+      - Métricas e Benchmark: modulos/05-metricas-benchmark.md
+      - Avaliações:
+        - Dataset de Teste: modulos/avaliacao/dataset-teste.md
+        - Nuvem vs. Local: modulos/avaliacao/comparacao-nuvem-local.md
+        - Avaliação RAG: modulos/avaliacao/avaliacao-rag.md
+        - Resultados: modulos/avaliacao/resultados-finais.md
