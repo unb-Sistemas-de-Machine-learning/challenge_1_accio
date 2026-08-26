@@ -1,7 +1,7 @@
 site_name: Sistemas de Machine Learning Accio
 
-nav:
-  - Introdução: Introducao.md
+
+
 theme:
   name: material
   palette:
@@ -17,3 +17,34 @@ theme:
       toggle:
         icon: material/brightness-4
         name: Modo escuro
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - toc.integrate
+    - content.code.copy
+
+nav:
+  - Início: index.md
+  - Arquitetura:
+      - Visão Geral: arquitetura/visao-geral.md
+      - Coleta de Dados: arquitetura/01-coleta-dados.md
+      - Banco Vetorial: arquitetura/02-banco-vetorial.md
+      - Pipeline RAG: arquitetura/03-pipeline-rag.md
+      - Infra e Modelos: arquitetura/04-infra-modelos-local.md
+      - Métricas e Benchmark: arquitetura/05-metricas-benchmark.md
+  - Avaliações:
+      - Dataset de Teste: avaliacao/dataset-teste.md
+      - Nuvem vs. Local: avaliacao/comparacao-nuvem-local.md
+      - Avaliação RAG: avaliacao/avaliacao-rag.md
+      - Resultados: avaliacao/resultados-finais.md
+  - Guias:
+      - Como usar: guias/como-usar.md
+
+
+plugins:
+  - search
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - tables
