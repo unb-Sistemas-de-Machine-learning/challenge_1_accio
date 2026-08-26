@@ -20,7 +20,13 @@ class RawDocument(BaseModel):
     doc_id: str = Field(default="")
 
     @model_validator(mode='after')
-    def generate_doc_id(self) -> 'RawDocument':
+    def set_derived_fields(self) -> 'RawDocument':
         if not self.doc_id:
             self.doc_id = hashlib.sha256(self.url.encode('utf-8')).hexdigest()
+            
+        if not self.semester_ref and self.published_at:
+            year = self.published_at.year
+            semester = 1 if self.published_at.month <= 7 else 2
+            self.semester_ref = f"{year}.{semester}"
+            
         return self
