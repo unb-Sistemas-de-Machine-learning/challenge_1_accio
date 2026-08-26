@@ -3,7 +3,7 @@ name: CI & Docs Deploy
 on:
   push:
     branches:
-      - main
+      - develop
 
 permissions:
   contents: write
