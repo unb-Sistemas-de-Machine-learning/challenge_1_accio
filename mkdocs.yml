@@ -1,50 +1,77 @@
-site_name: Sistemas de Machine Learning Accio
-
-
+site_name: FatoUnB - Documentação Técnica
+site_description: Sistema automatizado de fact-checking e combate a boatos na Universidade de Brasília criado para a disciplina de Sistemas de Machine Learning 2026.2.
+site_author: Equipe Accio
 
 theme:
   name: material
+  language: pt-BR
   palette:
-    - scheme: slate
-      primary: indigo
-      accent: indigo
-      toggle:
-        icon: material/brightness-7
-        name: Modo claro
+    # Modo Claro
     - scheme: default
       primary: indigo
       accent: indigo
       toggle:
+        icon: material/brightness-7
+        name: Mudar para modo escuro
+    # Modo Escuro
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
         icon: material/brightness-4
-        name: Modo escuro
+        name: Mudar para modo claro
   features:
-    - navigation.tabs
+    - navigation.instant
+    - navigation.tracking
     - navigation.sections
-    - toc.integrate
+    - navigation.top
     - content.code.copy
-
-nav:
-  - Início: index.md
-  - Arquitetura:
-      - Visão Geral: arquitetura/visao-geral.md
-      - Coleta de Dados: arquitetura/01-coleta-dados.md
-      - Banco Vetorial: arquitetura/02-banco-vetorial.md
-      - Pipeline RAG: arquitetura/03-pipeline-rag.md
-      - Infra e Modelos: arquitetura/04-infra-modelos-local.md
-      - Métricas e Benchmark: arquitetura/05-metricas-benchmark.md
-  - Avaliações:
-      - Dataset de Teste: avaliacao/dataset-teste.md
-      - Nuvem vs. Local: avaliacao/comparacao-nuvem-local.md
-      - Avaliação RAG: avaliacao/avaliacao-rag.md
-      - Resultados: avaliacao/resultados-finais.md
-  - Guias:
-      - Como usar: guias/como-usar.md
-
+    - content.code.annotate
 
 plugins:
   - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+
 markdown_extensions:
   - admonition
-  - pymdownx.highlight
-  - pymdownx.superfences
+  - attr_list
+  - md_in_html
   - tables
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+nav:
+  - Início: 
+    - index.md
+  - Guiding Questions: 
+    - guiding_questions.md
+  - Módulos:
+      - Visão Geral: modulos/visao-geral.md
+      - Coleta de Dados: modulos/01-coleta-dados.md
+      - Banco Vetorial: modulos/02-banco-vetorial.md
+      - Pipeline RAG & Checagem: modulos/rag.md
+      - Infra e Modelos: modulos/04-infra-modelos-local.md
+      - Métricas e Benchmark: modulos/05-metricas-benchmark.md
+      - Avaliações:
+        - Dataset de Teste: modulos/avaliacao/dataset-teste.md
+        - Nuvem vs. Local: modulos/avaliacao/comparacao-nuvem-local.md
+        - Avaliação RAG: modulos/avaliacao/avaliacao-rag.md
+        - Resultados: modulos/avaliacao/resultados-finais.md

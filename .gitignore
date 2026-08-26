@@ -1,0 +1,80 @@
+# ==========================================
+# 1. Ambientes Virtuais e Gerenciador uv
+# ==========================================
+.venv/
+.uv/
+env/
+venv/
+ENV/
+
+# ==========================================
+# 2. Documentação (MkDocs Build)
+# ==========================================
+site/
+
+# ==========================================
+# 3. Caches de Python, Bytecodes e Performance
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ==========================================
+# 4. Linters, Formatadores e Testes
+# ==========================================
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ==========================================
+# 5. Variáveis de Ambiente e Segredos (CRÍTICO)
+# ==========================================
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ==========================================
+# 6. Dados Locais, Bancos e Caches de Modelos
+# ==========================================
+# Sessões e bancos locais (Qdrant/SQLite/Neonize)
+*.db
+*.sqlite3
+qdrant_storage/
+sessions/
+
+# Downloads temporários de PDFs ou mídias
+temp/
+downloads/
+*.pdf
+
+# ==========================================
+# 7. IDEs e Editores de Código
+# ==========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
