@@ -64,10 +64,9 @@ nav:
   - Guiding Questions: 
     - guiding_questions.md
   - Módulos:
-      - Visão Geral: modulos/visao-geral.md
       - Coleta de Dados: modulos/01-coleta-dados.md
       - Banco Vetorial: modulos/02-banco-vetorial.md
-      - Pipeline RAG & Checagem: modulos/rag.md
+      - Pipeline RAG & Checagem: modulos/03-pipeline-rag.md
       - Infra e Modelos: modulos/04-infra-modelos-local.md
       - Métricas e Benchmark: modulos/05-metricas-benchmark.md
       - Avaliações:
