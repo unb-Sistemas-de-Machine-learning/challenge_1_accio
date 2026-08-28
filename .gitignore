@@ -78,3 +78,8 @@ downloads/
 *.swo
 *~
 .DS_Store
+
+# ==========================================
+# 8. Arquivos locais de mentoria/agente
+# ==========================================
+CLAUDE.md
