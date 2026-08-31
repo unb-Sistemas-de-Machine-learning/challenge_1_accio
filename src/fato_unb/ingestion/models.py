@@ -1,13 +1,15 @@
 import hashlib
-from enum import Enum
 from datetime import datetime
-from typing import Optional
+from enum import Enum
+
 from pydantic import BaseModel, Field, model_validator
+
 
 class SourceType(str, Enum):
     RSS_NEWS = "rss_news"
     HTML_PAGE = "html_page"
     PDF_DOCUMENT = "pdf_document"
+
 
 class RawDocument(BaseModel):
     title: str
@@ -16,17 +18,17 @@ class RawDocument(BaseModel):
     source: str
     source_type: SourceType
     published_at: datetime
-    semester_ref: Optional[str] = None
+    semester_ref: str | None = None
     doc_id: str = Field(default="")
 
-    @model_validator(mode='after')
-    def set_derived_fields(self) -> 'RawDocument':
+    @model_validator(mode="after")
+    def set_derived_fields(self) -> RawDocument:
         if not self.doc_id:
-            self.doc_id = hashlib.sha256(self.url.encode('utf-8')).hexdigest()
-            
+            self.doc_id = hashlib.sha256(self.url.encode("utf-8")).hexdigest()
+
         if not self.semester_ref and self.published_at:
             year = self.published_at.year
             semester = 1 if self.published_at.month <= 7 else 2
             self.semester_ref = f"{year}.{semester}"
-            
+
         return self
