@@ -98,6 +98,7 @@ class SemanticChunker:
                     url=document.url,
                     source=document.source,
                     semester_ref=document.semester_ref,
+                    published_at=document.published_at
                 )
             )
 
