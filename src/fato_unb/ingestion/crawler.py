@@ -6,8 +6,9 @@ import os
 import json
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
-from typing import Set, List
+from typing import Set, List, Optional
 from datetime import datetime, timezone
+from fato_unb.storage.repository import StagingRepository
 from .models import RawDocument, SourceType
 from .html import parse_html_content
 
@@ -63,9 +64,9 @@ def normalize_url(url: str) -> str:
     except Exception:
         return url
 
-def load_known_urls(filepath: str) -> Set[str]:
+def load_known_urls(filepath: Optional[str]) -> Set[str]:
     known = set()
-    if os.path.exists(filepath):
+    if filepath and os.path.exists(filepath):
         with open(filepath, "r", encoding="utf-8") as f:
             for line in f:
                 if line.strip():
@@ -128,17 +129,27 @@ async def fetch_and_parse(session: aiohttp.ClientSession, url: str) -> tuple:
         logger.error(f"Erro ao processar {url}: {str(e)}")
     return url, None, [], "", None
 
-async def run_crawler(output_file: str = "dados.txt"):
-    known_urls = load_known_urls(output_file)
+async def run_crawler(
+    output_file: Optional[str] = "dados.txt",
+    repository: Optional[StagingRepository] = None,
+    max_pages: Optional[int] = None,
+) -> List[RawDocument]:
+    known_urls = load_known_urls(output_file) if output_file else set()
     logger.info(f"Iniciando Crawler. {len(known_urls)} URLs já mapeadas.")
     
+    repo = repository or StagingRepository()
     visited: Set[str] = set()
     queue: List[str] = [normalize_url(u) for u in START_URLS]
     in_queue: Set[str] = set(queue)
     saved_count = 0
+    all_saved_docs: List[RawDocument] = []
     
     async with aiohttp.ClientSession() as session:
         while queue:
+            if max_pages is not None and len(visited) >= max_pages:
+                logger.info(f"Limite de {max_pages} páginas visitadas atingido no crawler.")
+                break
+
             batch = queue[:5]
             queue = queue[5:]
             
@@ -155,34 +166,44 @@ async def run_crawler(output_file: str = "dados.txt"):
             if tasks:
                 results = await asyncio.gather(*tasks)
                 
-                with open(output_file, "a", encoding="utf-8") as f_out:
-                    for url, text, links, title, published_at in results:
-                        is_article = check_is_article(url)
-                        
-                        if text and text != "PDF_DOCUMENT" and len(text.split()) > 50 and is_article:
-                            if url not in known_urls:
-                                if published_at and published_at >= CUTOFF_DATE:
-                                    doc = RawDocument(
-                                        title=title,
-                                        content=text,
-                                        url=url,
-                                        source=urlparse(url).netloc,
-                                        source_type=SourceType.HTML_PAGE,
-                                        published_at=published_at
-                                    )
-                                    f_out.write(doc.model_dump_json() + "\n")
-                                    known_urls.add(url)
-                                    saved_count += 1
-                                    logger.debug(f"Salvo: {url} | Data: {published_at}")
-                                else:
-                                    logger.debug(f"Descartado (antigo): {url}")
-                        
-                        for link in links:
-                            norm_link = normalize_url(link)
-                            if norm_link not in visited and norm_link not in in_queue:
-                                queue.append(norm_link)
-                                in_queue.add(norm_link)
+                batch_docs: List[RawDocument] = []
+                for url, text, links, title, published_at in results:
+                    is_article = check_is_article(url)
+                    
+                    if text and text != "PDF_DOCUMENT" and len(text.split()) > 50 and is_article:
+                        if url not in known_urls:
+                            if published_at and published_at >= CUTOFF_DATE:
+                                doc = RawDocument(
+                                    title=title,
+                                    content=text,
+                                    url=url,
+                                    source=urlparse(url).netloc,
+                                    source_type=SourceType.HTML_PAGE,
+                                    published_at=published_at
+                                )
+                                batch_docs.append(doc)
+                                known_urls.add(url)
+                                saved_count += 1
+                                logger.debug(f"Salvo: {url} | Data: {published_at}")
+                            else:
+                                logger.debug(f"Descartado (antigo): {url}")
+                    
+                    for link in links:
+                        norm_link = normalize_url(link)
+                        if norm_link not in visited and norm_link not in in_queue:
+                            queue.append(norm_link)
+                            in_queue.add(norm_link)
+                
+                if batch_docs:
+                    all_saved_docs.extend(batch_docs)
+                    if output_file:
+                        with open(output_file, "a", encoding="utf-8") as f_out:
+                            for doc in batch_docs:
+                                f_out.write(doc.model_dump_json() + "\n")
+                    if repo is not None:
+                        await repo.save_documents(batch_docs)
                 
                 await asyncio.sleep(3)
                             
-    logger.info("Execução finalizada.")
+    logger.info(f"Execução finalizada. Total de documentos coletados: {len(all_saved_docs)}")
+    return all_saved_docs

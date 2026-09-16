@@ -2,8 +2,9 @@ import logging
 import feedparser
 from datetime import datetime, timezone
 from time import mktime
-from typing import List
+from typing import List, Optional
 from .models import RawDocument, SourceType
+from fato_unb.storage.repository import StagingRepository
 
 logger = logging.getLogger(__name__)
 
@@ -33,3 +34,13 @@ def fetch_unb_rss_feed(feed_url: str = "https://noticias.unb.br/?format=feed&typ
         
     logger.info(f"Extração RSS concluída. Total de documentos: {len(documents)}")
     return documents
+
+async def ingest_unb_rss_feed(
+    feed_url: str = "https://noticias.unb.br/?format=feed&type=rss",
+    repository: Optional[StagingRepository] = None,
+) -> List[RawDocument]:
+    docs = fetch_unb_rss_feed(feed_url=feed_url)
+    repo = repository or StagingRepository()
+    if docs:
+        await repo.save_documents(docs)
+    return docs
