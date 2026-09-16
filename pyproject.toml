@@ -4,7 +4,9 @@ version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = [
     "aiohttp>=3.14.3",
+    "aiosqlite>=0.20.0",
     "apscheduler>=3.11.3",
+    "asyncpg>=0.30.0",
     "babel==2.18.0",
     "backrefs==8.0",
     "beautifulsoup4>=4.15.0",
@@ -39,6 +41,7 @@ dependencies = [
     "qdrant-client>=1.19.0",
     "requests==2.34.2",
     "six==1.17.0",
+    "sqlalchemy>=2.0.0",
     "trafilatura>=2.2.0",
     "urllib3==2.7.0",
     "watchdog==6.0.0",
