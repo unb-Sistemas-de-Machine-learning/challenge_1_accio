@@ -1,17 +1,16 @@
 import logging
-import uuid
 from dataclasses import dataclass
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PointStruct, SparseVectorParams, VectorParams
+from qdrant_client.models import Distance, SparseVectorParams, VectorParams
 
 from fato_unb.rag.chunker import SemanticChunker
 from fato_unb.rag.embeddings import EmbeddingService
 from fato_unb.storage.repository import StagingRepository
 from fato_unb.vectorstore.client import get_qdrant_client
+from fato_unb.vectorstore.operations import NAMESPACE, upsert_documents
 
 logger = logging.getLogger(__name__)
-NAMESPACE = uuid.UUID("f77e4b30-9222-4d60-889a-861c4da36012")
 
 
 @dataclass
@@ -79,24 +78,14 @@ class IndexingPipeline:
                 # Processa chunks em lotes de embedding
                 for i in range(0, len(chunks), self.batch_size):
                     chunk_batch = chunks[i : i + self.batch_size]
-                    texts = [c.content for c in chunk_batch]
-                    vectors = self.embedder.embed_texts(texts)
-
-                    points = [
-                        PointStruct(
-                            id=str(uuid.uuid5(NAMESPACE, chunk.chunk_id)),
-                            vector={"dense": vec},
-                            payload=chunk.model_dump(mode="json"),
-                        )
-                        for chunk, vec in zip(chunk_batch, vectors)
-                    ]
-
-                    self.client.upsert(
+                    indexed_count = upsert_documents(
+                        embedder=self.embedder,
+                        chunks=chunk_batch,
+                        client=self.client,
                         collection_name=self.collection_name,
-                        points=points,
                         wait=True,
                     )
-                    report.total_chunks += len(points)
+                    report.total_chunks += indexed_count
 
                 await self.repository.mark_as_indexed(doc.doc_id)
                 report.total_indexed += 1

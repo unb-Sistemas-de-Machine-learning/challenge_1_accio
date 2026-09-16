@@ -7,11 +7,21 @@ from datetime import datetime
 import uuid
 NAMESPACE = uuid.UUID("f77e4b30-9222-4d60-889a-861c4da36012")
 
-def upsert_documents(embedder: EmbeddingService, chunks: list[DocumentChunk]) -> None:
-    client = get_qdrant_client()
+def upsert_documents(
+    embedder: EmbeddingService,
+    chunks: list[DocumentChunk],
+    client: QdrantClient | None = None,
+    collection_name: str = "fato_unb_noticias",
+    wait: bool = True,
+) -> int:
+    """Calcula embeddings e persiste chunks no Qdrant de forma idempotente."""
+    if not chunks:
+        return 0
+
+    qdrant = client or get_qdrant_client()
     textos = [chunk.content for chunk in chunks]
     vetores = embedder.embed_texts(textos)
-    
+
     pontos = [
         PointStruct(
             id=str(uuid.uuid5(NAMESPACE, chunk.chunk_id)),
@@ -21,12 +31,24 @@ def upsert_documents(embedder: EmbeddingService, chunks: list[DocumentChunk]) ->
         for chunk, vetor in zip(chunks, vetores)
     ]
 
-    client.upsert(collection_name="fato_unb_noticias", points=pontos)
-    
-def buscar(query: str, embedder: EmbeddingService, source: str | None = None, semester_ref: str | None = None, data_inicio: datetime | None = None, data_fim: datetime | None = None, limit: int = 5):
-    client = get_qdrant_client()
+    qdrant.upsert(collection_name=collection_name, points=pontos, wait=wait)
+    return len(pontos)
+
+
+def buscar(
+    query: str,
+    embedder: EmbeddingService,
+    client: QdrantClient | None = None,
+    collection_name: str = "fato_unb_noticias",
+    source: str | None = None,
+    semester_ref: str | None = None,
+    data_inicio: datetime | None = None,
+    data_fim: datetime | None = None,
+    limit: int = 5,
+):
+    qdrant = client or get_qdrant_client()
     vetor = embedder.embed_query(query)
-    
+
     condicoes = []
     if source is not None:
         condicoes.append(FieldCondition(key="source", match=MatchValue(value=source)))
@@ -34,6 +56,12 @@ def buscar(query: str, embedder: EmbeddingService, source: str | None = None, se
         condicoes.append(FieldCondition(key="semester_ref", match=MatchValue(value=semester_ref)))
     if data_inicio or data_fim:
         condicoes.append(FieldCondition(key="published_at", range=DatetimeRange(gte=data_inicio, lte=data_fim)))
-        
+
     filtro = Filter(must=condicoes) if condicoes else None
-    return client.query_points(collection_name="fato_unb_noticias", query=vetor, using="dense", query_filter=filtro, limit=limit)
+    return qdrant.query_points(
+        collection_name=collection_name,
+        query=vetor,
+        using="dense",
+        query_filter=filtro,
+        limit=limit,
+    )
