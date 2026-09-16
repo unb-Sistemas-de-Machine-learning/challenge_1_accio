@@ -16,7 +16,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("demo_busca")
 
-def run_search(query: str, limit: int = 3):
+def run_search(query: str, limit: int = 3, completo: bool = False):
     client = get_qdrant_client()
     collection_name = "fato_unb_noticias"
 
@@ -30,7 +30,7 @@ def run_search(query: str, limit: int = 3):
     logger.info(f"Carregando modelo de embeddings para consultar: '{query}'...")
     embedder = EmbeddingService(provider="local")
 
-    logger.info(f"Executando busca vetorial na coleção '{collection_name}'...")
+    logger.info(f"Executando busca vetorial híbrida na coleção '{collection_name}'...")
     resultado = buscar(query=query, embedder=embedder, limit=limit)
 
     pontos = getattr(resultado, "points", [])
@@ -51,23 +51,53 @@ def run_search(query: str, limit: int = 3):
         fonte = payload.get("source", "Desconhecida")
         semestre = payload.get("semester_ref", "Geral")
         url = payload.get("url", "Sem URL")
+        chunk_idx = payload.get("chunk_index", 0)
+        total_chunks = payload.get("total_chunks", 1)
         raw_text = payload.get("raw_text", "")
 
         print(f"[{i}] Relevância (Score): {score:.4f}")
         print(f"    Título:   {titulo}")
-        print(f"    Fonte:    {fonte} (Ref: {semestre})")
+        print(f"    Fonte:    {fonte} (Ref: {semestre}) | Bloco: {chunk_idx + 1}/{total_chunks}")
         print(f"    URL:      {url}")
-        print(f"    Trecho:   {raw_text[:250]}...")
+
+        if completo:
+            print(f"\n    --- TRECHO COMPLETO DO BANCO (CHUNK) ---")
+            print(f"{raw_text.strip()}\n")
+        else:
+            preview = raw_text[:250].strip() + ("..." if len(raw_text) > 250 else "")
+            print(f"    Trecho:   {preview}")
+            print("    (Dica: use -c ou --completo para ver o texto completo deste trecho)")
         print("-" * 56)
 
-def main():
-    # Permite passar a busca pela linha de comando ou usar a padrão
-    if len(sys.argv) > 1:
-        query = " ".join(sys.argv[1:])
-    else:
-        query = "Como funciona o Restaurante Universitário (RU) da UnB?"
 
-    run_search(query)
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Busca híbrida de notícias no Qdrant.")
+    parser.add_argument(
+        "query",
+        nargs="*",
+        default=["Como funciona o Restaurante Universitário (RU) da UnB?"],
+        help="Pergunta ou termos de busca",
+    )
+    parser.add_argument(
+        "-l",
+        "--limit",
+        type=int,
+        default=3,
+        help="Número máximo de resultados (padrão: 3)",
+    )
+    parser.add_argument(
+        "-c",
+        "--completo",
+        action="store_true",
+        help="Exibe o trecho completo armazenado no banco sem truncamento",
+    )
+
+    args = parser.parse_args()
+    query_str = " ".join(args.query) if isinstance(args.query, list) else args.query
+    run_search(query=query_str, limit=args.limit, completo=args.completo)
+
 
 if __name__ == "__main__":
     main()
