@@ -1,9 +1,6 @@
 import asyncio
-from datetime import datetime
-import json
 import logging
-import os
-from typing import List, Optional
+from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -17,9 +14,9 @@ logger = logging.getLogger(__name__)
 
 
 async def run_rss_ingestion(
-    output_file: Optional[str] = "dados.txt",
-    repository: Optional[StagingRepository] = None,
-) -> List[RawDocument]:
+    output_file: str | None = "dados.txt",
+    repository: StagingRepository | None = None,
+) -> list[RawDocument]:
     logger.info("Iniciando task de ingestão via RSS...")
     repo = repository or StagingRepository()
     docs = fetch_unb_rss_feed()
@@ -45,10 +42,10 @@ async def run_rss_ingestion(
 
 
 async def pipeline_job(
-    output_file: str = "dados.txt",
-    repository: Optional[StagingRepository] = None,
-    pipeline: Optional[IndexingPipeline] = None,
-    max_crawler_pages: Optional[int] = 25,
+    output_file: str | None = "dados.txt",
+    repository: StagingRepository | None = None,
+    pipeline: IndexingPipeline | None = None,
+    max_crawler_pages: int | None = 25,
 ) -> IndexingReport:
     logger.info(f"--- INICIANDO NOVO CICLO DE INGESTÃO: {output_file} ---")
 
