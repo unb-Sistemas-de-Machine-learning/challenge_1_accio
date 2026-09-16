@@ -62,6 +62,7 @@ dmypy.json
 *.db
 *.sqlite3
 qdrant_storage/
+postgres_data/
 sessions/
 
 # Downloads temporários de PDFs ou mídias
