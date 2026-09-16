@@ -57,3 +57,13 @@ def test_raw_document_accepts_http_url():
     )
     assert len(doc.doc_id) == 64
     assert str(doc.url) == "https://noticias.unb.br/exemplo"
+
+
+def test_clean_html_text_removes_tags():
+    from fato_unb.ingestion.rss import clean_html_text
+
+    raw_html = '<p><img src="https://noticias.unb.br/foto.jpg" />Aviso sobre o <b>RU</b> no feriado.</p>'
+    clean = clean_html_text(raw_html)
+    assert clean == "Aviso sobre o RU no feriado."
+    assert "<img" not in clean
+    assert "https://" not in clean

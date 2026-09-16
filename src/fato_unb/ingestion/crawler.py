@@ -6,11 +6,13 @@ import os
 import json
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
-from typing import Set, List, Optional
+from typing import Set, List, Optional, TYPE_CHECKING
 from datetime import datetime, timezone
-from fato_unb.storage.repository import StagingRepository
 from .models import RawDocument, SourceType
 from .html import parse_html_content
+
+if TYPE_CHECKING:
+    from fato_unb.storage.repository import StagingRepository
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +81,20 @@ def load_known_urls(filepath: Optional[str]) -> Set[str]:
                         pass
     return known
 
+
+def load_saved_documents(filepath: Optional[str]) -> List[RawDocument]:
+    docs = []
+    if filepath and os.path.exists(filepath):
+        with open(filepath, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    try:
+                        docs.append(RawDocument.model_validate_json(line))
+                    except Exception:
+                        pass
+    return docs
+
+
 def is_valid_url(url: str) -> bool:
     try:
         parsed = urlparse(url)
@@ -131,13 +147,23 @@ async def fetch_and_parse(session: aiohttp.ClientSession, url: str) -> tuple:
 
 async def run_crawler(
     output_file: Optional[str] = "dados.txt",
-    repository: Optional[StagingRepository] = None,
+    repository: Optional["StagingRepository"] = None,
     max_pages: Optional[int] = None,
 ) -> List[RawDocument]:
     known_urls = load_known_urls(output_file) if output_file else set()
     logger.info(f"Iniciando Crawler. {len(known_urls)} URLs já mapeadas.")
     
-    repo = repository or StagingRepository()
+    if repository is None:
+        from fato_unb.storage.repository import StagingRepository
+        repo = StagingRepository()
+    else:
+        repo = repository
+
+    if output_file and repo is not None:
+        saved_file_docs = load_saved_documents(output_file)
+        if saved_file_docs:
+            await repo.save_documents(saved_file_docs)
+
     visited: Set[str] = set()
     queue: List[str] = [normalize_url(u) for u in START_URLS]
     in_queue: Set[str] = set(queue)

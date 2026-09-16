@@ -1,11 +1,46 @@
+import logging
+import re
+import uuid
+from datetime import datetime
+
+from qdrant_client import QdrantClient
+from qdrant_client.models import (
+    DatetimeRange,
+    FieldCondition,
+    Filter,
+    Fusion,
+    FusionQuery,
+    MatchValue,
+    PointStruct,
+    Prefetch,
+    SparseVector,
+)
+
+from fato_unb.rag.embeddings import EmbeddingService
 from fato_unb.rag.models import DocumentChunk
 from fato_unb.vectorstore.client import get_qdrant_client
-from fato_unb.rag.embeddings import EmbeddingService
-from qdrant_client import QdrantClient, models
-from qdrant_client.models import PointStruct, FieldCondition, MatchValue, DatetimeRange, Filter
-from datetime import datetime
-import uuid
+
+logger = logging.getLogger(__name__)
 NAMESPACE = uuid.UUID("f77e4b30-9222-4d60-889a-861c4da36012")
+
+UNB_ACRONYMS = {
+    r"\bru\b": "RU restaurante universitário",
+    r"\bpas\b": "PAS programa de avaliação seriada",
+    r"\bsigaa\b": "SIGAA sistema integrado de gestão de atividades acadêmicas",
+    r"\bicc\b": "ICC instituto central de ciências",
+    r"\bcepe\b": "CEPE conselho de ensino pesquisa e extensão",
+    r"\bdeg\b": "DEG decanato de ensino de graduação",
+    r"\bdac\b": "DAC decanato de assuntos comunitários",
+}
+
+
+def expand_acronyms(text: str) -> str:
+    """Expande siglas comuns da UnB para melhorar a recuperação léxica e semântica."""
+    expanded = text
+    for pattern, replacement in UNB_ACRONYMS.items():
+        expanded = re.sub(pattern, replacement, expanded, flags=re.IGNORECASE)
+    return expanded
+
 
 def upsert_documents(
     embedder: EmbeddingService,
@@ -14,22 +49,31 @@ def upsert_documents(
     collection_name: str = "fato_unb_noticias",
     wait: bool = True,
 ) -> int:
-    """Calcula embeddings e persiste chunks no Qdrant de forma idempotente."""
+    """Calcula embeddings densos e esparsos (BM25) e persiste chunks no Qdrant de forma idempotente."""
     if not chunks:
         return 0
 
     qdrant = client or get_qdrant_client()
     textos = [chunk.content for chunk in chunks]
-    vetores = embedder.embed_texts(textos)
+    dense_vectors = embedder.embed_texts(textos)
+    sparse_dicts = embedder.embed_sparse_texts(textos)
 
-    pontos = [
-        PointStruct(
-            id=str(uuid.uuid5(NAMESPACE, chunk.chunk_id)),
-            vector={"dense": vetor},
-            payload=chunk.model_dump(mode="json"),
+    pontos = []
+    for chunk, d_vec, s_dict in zip(chunks, dense_vectors, sparse_dicts):
+        vectors = {
+            "dense": d_vec,
+            "sparse": SparseVector(
+                indices=s_dict["indices"],
+                values=s_dict["values"],
+            ),
+        }
+        pontos.append(
+            PointStruct(
+                id=str(uuid.uuid5(NAMESPACE, chunk.chunk_id)),
+                vector=vectors,
+                payload=chunk.model_dump(mode="json"),
+            )
         )
-        for chunk, vetor in zip(chunks, vetores)
-    ]
 
     qdrant.upsert(collection_name=collection_name, points=pontos, wait=wait)
     return len(pontos)
@@ -47,7 +91,14 @@ def buscar(
     limit: int = 5,
 ):
     qdrant = client or get_qdrant_client()
-    vetor = embedder.embed_query(query)
+    query_expanded = expand_acronyms(query)
+
+    vetor_denso = embedder.embed_query(query_expanded)
+    vetor_esparso_dict = embedder.embed_sparse_query(query_expanded)
+    vetor_esparso = SparseVector(
+        indices=vetor_esparso_dict["indices"],
+        values=vetor_esparso_dict["values"],
+    )
 
     condicoes = []
     if source is not None:
@@ -58,10 +109,26 @@ def buscar(
         condicoes.append(FieldCondition(key="published_at", range=DatetimeRange(gte=data_inicio, lte=data_fim)))
 
     filtro = Filter(must=condicoes) if condicoes else None
-    return qdrant.query_points(
-        collection_name=collection_name,
-        query=vetor,
-        using="dense",
-        query_filter=filtro,
-        limit=limit,
-    )
+
+    try:
+        # Busca híbrida nativa com Reciprocal Rank Fusion (RRF)
+        return qdrant.query_points(
+            collection_name=collection_name,
+            prefetch=[
+                Prefetch(query=vetor_denso, using="dense", limit=limit * 2, filter=filtro),
+                Prefetch(query=vetor_esparso, using="sparse", limit=limit * 2, filter=filtro),
+            ],
+            query=FusionQuery(fusion=Fusion.RRF),
+            limit=limit,
+        )
+    except Exception as exc:
+        logger.warning(
+            f"Busca híbrida indisponível na coleção '{collection_name}', recorrendo à busca densa: {exc}"
+        )
+        return qdrant.query_points(
+            collection_name=collection_name,
+            query=vetor_denso,
+            using="dense",
+            query_filter=filtro,
+            limit=limit,
+        )

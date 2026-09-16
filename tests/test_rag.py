@@ -111,3 +111,42 @@ def test_local_fastembed_service():
 
     query_vec = embedder.embed_query("Qual o prazo de matrícula?")
     assert len(query_vec) == 384
+
+
+def test_sparse_embedding_service_mock():
+    """Valida geração de vetores esparsos em modo mock."""
+    embedder = EmbeddingService(provider="mock")
+    sparse_texts = embedder.embed_sparse_texts(["Texto 1", "Texto 2"])
+    assert len(sparse_texts) == 2
+    assert "indices" in sparse_texts[0] and "values" in sparse_texts[0]
+    assert len(sparse_texts[0]["indices"]) == len(sparse_texts[0]["values"])
+
+    sparse_query = embedder.embed_sparse_query("Consulta teste")
+    assert "indices" in sparse_query and "values" in sparse_query
+    assert embedder.embed_sparse_texts([]) == []
+
+
+def test_sparse_embedding_service_local():
+    """Valida geração de vetores esparsos (BM25) reais via fastembed."""
+    embedder = EmbeddingService(provider="local")
+    sparse_texts = embedder.embed_sparse_texts(["Restaurante Universitário da UnB"])
+    assert len(sparse_texts) == 1
+    assert len(sparse_texts[0]["indices"]) > 0
+    assert len(sparse_texts[0]["indices"]) == len(sparse_texts[0]["values"])
+
+    sparse_query = embedder.embed_sparse_query("cardápio do RU")
+    assert len(sparse_query["indices"]) > 0
+    assert len(sparse_query["indices"]) == len(sparse_query["values"])
+
+
+def test_expand_acronyms():
+    """Valida que a expansão de siglas institucionais da UnB funciona com regex de palavras inteiras."""
+    from fato_unb.vectorstore.operations import expand_acronyms
+
+    assert "restaurante universitário" in expand_acronyms("Almoço no RU hoje").lower()
+    assert "programa de avaliação seriada" in expand_acronyms("Edital do PAS 2026").lower()
+    assert "sistema integrado" in expand_acronyms("Acesse o SIGAA").lower()
+
+    # Garante que substrings em palavras não são incorretamente expandidas (ex: RUA)
+    assert expand_acronyms("Rua das Oliveiras") == "Rua das Oliveiras"
+

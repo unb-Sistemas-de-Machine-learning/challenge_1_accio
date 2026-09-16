@@ -52,7 +52,7 @@ class IndexingPipeline:
             )
             logger.info(f"Coleção Qdrant '{self.collection_name}' criada com sucesso.")
 
-    async def run(self, max_docs: int = 100) -> IndexingReport:
+    async def run(self, max_docs: int = 500) -> IndexingReport:
         report = IndexingReport()
         self.ensure_collection()
 
