@@ -33,7 +33,7 @@ dado o texto que o usuário mandaria ao bot, a evidência correta aparece entre 
 
 ## Campos
 
-`id`, `tipo`, `alegacao`, `expected_urls`, `veredito_esperado`, `categoria`, `dificuldade`, `desafio`, `evidencia`
+`id`, `tipo`, `alegacao`, `expected_urls`, `veredito_esperado`, `categoria`, `dificuldade`, `desafio`, `evidencia`, `evidence_spans`
 (trecho da fonte que sustenta o rótulo, para facilitar a revisão humana).
 
 ## Como o acerto é medido
@@ -43,6 +43,19 @@ dado o texto que o usuário mandaria ao bot, a evidência correta aparece entre 
 - `recall@k`: alguma das `k` primeiras chunks recuperadas pertence a um documento esperado.
 - `MRR`: média de 1/posição do primeiro chunk correto.
 - Corpus: `dados.txt`, indexado numa coleção isolada em memória (não toca a coleção de produção).
+
+## Métricas por chunk e por contexto
+
+Além do recall por documento, cada caso tem `evidence_spans`: trechos **exatos** da fonte que respondem ao caso
+(validados por teste contra o corpus). Isso permite medir:
+
+- **C@k (chunk):** algum dos `k` primeiros chunks recuperados contém a evidência.
+- **X@k (contexto):** algum dos `k` primeiros contextos contém a evidência, onde o contexto é o `parent_text`
+  do chunk (o que o LLM receberia) ou o próprio chunk quando não há `parent_text`.
+- **ctx(p):** palavras de contexto somadas nos 3 primeiros resultados (custo em tokens; sem deduplicar sobreposição).
+
+Um span partido entre dois chunks conta como erro do chunker, que é justamente o que se quer medir.
+Casos `multi_doc` aceitam qualquer um dos spans (evidência em algum dos documentos).
 
 ## Como rodar
 

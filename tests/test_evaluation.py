@@ -6,6 +6,7 @@ from fato_unb.evaluation.dataset import (
     DEFAULT_CORPUS,
     CasoTeste,
     TipoCaso,
+    contains_span,
     content_key,
     dedupe_corpus,
     expected_content_keys,
@@ -111,3 +112,62 @@ def test_shipped_dataset_covers_hard_cases():
     desafios = {c.desafio for c in casos}
     assert {"parafrase", "coloquial", "sigla", "confundidor", "numerico", "multi_doc", "temporal"} <= desafios
     assert sum(c.dificuldade == "dificil" for c in casos) >= 30
+
+
+def test_contains_span_ignores_whitespace_and_line_breaks():
+    assert contains_span("O prazo\nvai até 30 de   setembro.", ["prazo vai até 30 de setembro"])
+    assert not contains_span("O prazo vai até 21 de setembro.", ["30 de setembro"])
+    assert not contains_span("qualquer texto", [])
+
+
+@pytest.mark.skipif(not DEFAULT_CORPUS.exists(), reason="corpus dados.txt ausente")
+def test_shipped_evidence_spans_exist_in_expected_documents():
+    """Um span que não está no documento esperado tornaria a métrica por chunk silenciosamente errada."""
+    docs = load_corpus()
+    url_map = url_to_content_keys(docs)
+    texto_por_chave = {content_key(d): d.content for d in docs}
+    for caso in load_dataset():
+        if caso.tipo == TipoCaso.SEM_REGISTRO:
+            assert caso.evidence_spans == [], caso.id
+            continue
+        assert caso.evidence_spans, f"{caso.id} sem evidence_spans"
+        textos = [texto_por_chave[k] for k in expected_content_keys(caso, url_map)]
+        for span in caso.evidence_spans:
+            assert any(contains_span(t, [span]) for t in textos), f"{caso.id}: '{span}' não está no documento"
+
+
+def test_chunk_and_context_metrics_distinguish_chunk_from_parent():
+    """Com o chunk pequeno a evidência pode ficar fora do chunk mas dentro do parent_text."""
+    frases = [f"Frase {i} sem relevancia alguma para o assunto tratado." for i in range(30)]
+    frases[15] = "O prazo final de inscricao e 30 de setembro."
+    doc = _doc("https://x.br/a", " ".join(frases))
+    caso = CasoTeste(
+        id="c1",
+        tipo=TipoCaso.VERDADEIRA,
+        alegacao="prazo final de inscricao",
+        expected_urls=["https://x.br/a"],
+        categoria="x",
+        evidence_spans=["O prazo final de inscricao e 30 de setembro"],
+    )
+    from fato_unb.rag.chunker import SemanticChunker
+
+    chunks = SemanticChunker(chunk_size=20, overlap_sentences=0, parent_size=200).chunk_document(doc)
+    # o chunk com a evidência contém o span; um chunk vizinho não, mas o parent dele sim
+    com = [c for c in chunks if contains_span(c.raw_text, caso.evidence_spans)]
+    vizinhos = [c for c in chunks if not contains_span(c.raw_text, caso.evidence_spans)
+                and contains_span(c.parent_text or "", caso.evidence_spans)]
+    assert len(com) == 1
+    assert vizinhos, "o parent_text deveria cobrir a evidência também em chunks vizinhos"
+
+
+def test_avaliar_reports_chunk_metrics_with_mock_embedder():
+    docs = [_doc("https://x.br/a", "A UnB abre matrículas em julho."), _doc("https://x.br/b", "O RU fecha no feriado.")]
+    caso = CasoTeste(
+        id="c1", tipo=TipoCaso.VERDADEIRA, alegacao="matrícula", expected_urls=["https://x.br/a"],
+        categoria="x", evidence_spans=["abre matrículas em julho"],
+    )
+    res = avaliar([caso], docs, EvalConfig(name="mock", chunker="sentence", chunk_size=50, overlap=0),
+                  embedder=EmbeddingService(provider="mock"))
+    g = res.agregado()
+    assert {"chunk@1", "chunk@3", "chunk@5", "ctx@3", "chunk_mrr", "ctx_words"} <= set(g)
+    assert g["chunk@5"] == 1.0 and g["ctx@5"] == 1.0  # só 2 docs; a evidência está nos 5 primeiros

@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 from enum import Enum
 from pathlib import Path
 
@@ -37,6 +38,22 @@ class CasoTeste(BaseModel):
         "confundidor, numerico, entidade, multi_doc ou temporal",
     )
     evidencia: str = Field("", description="Trecho da fonte que sustenta o rótulo")
+    evidence_spans: list[str] = Field(
+        default_factory=list,
+        description="Trechos EXATOS do documento esperado que respondem ao caso; "
+        "um chunk é 'correto' se contiver algum deles (vazio em sem_registro)",
+    )
+
+
+def normalize_text(text: str) -> str:
+    """Colapsa espaços e quebras de linha para comparar trechos independentemente do chunking."""
+    return re.sub(r"\s+", " ", text.replace("\xa0", " ")).strip()
+
+
+def contains_span(text: str, spans: list[str]) -> bool:
+    """Verdadeiro se `text` contém algum dos trechos-evidência."""
+    norm = normalize_text(text)
+    return any(normalize_text(span) in norm for span in spans)
 
 
 def normalize_url(url: str) -> str:

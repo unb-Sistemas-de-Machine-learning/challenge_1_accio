@@ -6,6 +6,7 @@ from qdrant_client import QdrantClient
 from fato_unb.evaluation.dataset import (
     CasoTeste,
     TipoCaso,
+    contains_span,
     dedupe_corpus,
     expected_content_keys,
     normalize_url,
@@ -77,6 +78,12 @@ class ResultadoCaso:
     top_score: float | None
     recall: dict[int, float] = field(default_factory=dict)
     rr: float | None = None
+    # Por chunk: o trecho recuperado contém a evidência? (chunk = raw_text)
+    chunk_recall: dict[int, float] = field(default_factory=dict)
+    chunk_rr: float | None = None
+    # Por contexto: o que o LLM receberia (parent_text, ou o próprio chunk se não houver)
+    ctx_recall: dict[int, float] = field(default_factory=dict)
+    ctx_words: float | None = None  # palavras de contexto nos 3 primeiros resultados
 
 
 @dataclass
@@ -104,6 +111,14 @@ class ResultadoAvaliacao:
         out: dict = {"n": n, "mrr": sum(c.rr for c in avaliaveis) / n}
         for k in KS:
             out[f"recall@{k}"] = sum(c.recall[k] for c in avaliaveis) / n
+        com_span = [c for c in avaliaveis if c.chunk_rr is not None]
+        if com_span:
+            m = len(com_span)
+            out["chunk_mrr"] = sum(c.chunk_rr for c in com_span) / m
+            out["ctx_words"] = sum(c.ctx_words for c in com_span) / m
+            for k in KS:
+                out[f"chunk@{k}"] = sum(c.chunk_recall[k] for c in com_span) / m
+                out[f"ctx@{k}"] = sum(c.ctx_recall[k] for c in com_span) / m
         return out
 
     def por_tipo(self) -> dict[str, dict]:
@@ -191,6 +206,7 @@ def avaliar(
         tempos.append((time.perf_counter() - t0) * 1000)
 
         pontos = getattr(resp, "points", [])
+        payloads = [p.payload or {} for p in pontos]
         ranked_urls = [(p.payload or {}).get("url", "") for p in pontos]
         ranked_keys = [url_map.get(normalize_url(u), "") for u in ranked_urls]
 
@@ -206,6 +222,14 @@ def avaliar(
             relevantes = expected_content_keys(caso, url_map)
             res.recall = {k: recall_at_k(ranked_keys, relevantes, k) for k in KS}
             res.rr = reciprocal_rank(ranked_keys, relevantes)
+            if caso.evidence_spans:
+                chunk_hits = [contains_span(pl.get("raw_text", ""), caso.evidence_spans) for pl in payloads]
+                contextos = [pl.get("parent_text") or pl.get("raw_text", "") for pl in payloads]
+                ctx_hits = [contains_span(t, caso.evidence_spans) for t in contextos]
+                res.chunk_recall = {k: float(any(chunk_hits[:k])) for k in KS}
+                res.ctx_recall = {k: float(any(ctx_hits[:k])) for k in KS}
+                res.chunk_rr = next((1.0 / i for i, h in enumerate(chunk_hits, 1) if h), 0.0)
+                res.ctx_words = float(sum(len(t.split()) for t in contextos[:3]))
         resultados.append(res)
 
     return ResultadoAvaliacao(
@@ -232,11 +256,33 @@ def formatar_tabela(resultados: list[ResultadoAvaliacao]) -> str:
     return "\n".join(linhas)
 
 
+def formatar_tabela_chunk(resultados: list[ResultadoAvaliacao]) -> str:
+    """Métrica por chunk: o trecho recuperado (ou seu contexto) contém a evidência?"""
+    cab = f"{'config':<20}{'n':>4}" + "".join(f"{'C@' + str(k):>7}" for k in KS)
+    cab += f"{'C-MRR':>8}" + "".join(f"{'X@' + str(k):>7}" for k in KS) + f"{'ctx(p)':>8}"
+    linhas = ["Por chunk (C) e por contexto entregue ao LLM (X); ctx(p) = palavras no top-3", cab, "-" * len(cab)]
+    for r in resultados:
+        g = r.agregado()
+        if "chunk_mrr" not in g:
+            continue
+        linhas.append(
+            f"{r.config.name:<20}{g['n']:>4}"
+            + "".join(f"{g[f'chunk@{k}']:>7.3f}" for k in KS)
+            + f"{g['chunk_mrr']:>8.3f}"
+            + "".join(f"{g[f'ctx@{k}']:>7.3f}" for k in KS)
+            + f"{g['ctx_words']:>8.0f}"
+        )
+    return "\n".join(linhas)
+
+
 def _linha(nome: str, g: dict) -> str:
-    return (
+    base = (
         f"  {nome:<14} n={g['n']:<3} R@1={g['recall@1']:.2f} R@3={g['recall@3']:.2f} "
         f"R@5={g['recall@5']:.2f} MRR={g['mrr']:.2f}"
     )
+    if "chunk@3" in g:
+        base += f" | C@1={g['chunk@1']:.2f} C@3={g['chunk@3']:.2f} X@3={g['ctx@3']:.2f}"
+    return base
 
 
 def formatar_por_tipo(r: ResultadoAvaliacao) -> str:

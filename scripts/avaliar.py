@@ -9,6 +9,7 @@ Uso:
 import argparse
 import json
 import sys
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -26,6 +27,7 @@ from fato_unb.evaluation.retrieval import (  # noqa: E402
     avaliar,
     formatar_por_tipo,
     formatar_tabela,
+    formatar_tabela_chunk,
 )
 
 
@@ -51,9 +53,17 @@ def main() -> None:
         if cfg.model_name not in embedders:
             embedders[cfg.model_name] = EmbeddingService(provider="local", model_name=cfg.model_name)
         embedder = embedders[cfg.model_name]
+        t0 = time.perf_counter()
         resultados.append(avaliar(casos, docs, cfg, embedder=embedder))
+        print(
+            f"[{len(resultados)}/{len(args.config)}] {cfg.name} pronto em {time.perf_counter() - t0:.0f}s",
+            file=sys.stderr,
+            flush=True,
+        )
 
     print(formatar_tabela(resultados))
+    print()
+    print(formatar_tabela_chunk(resultados))
     for r in resultados:
         print()
         print(formatar_por_tipo(r))
