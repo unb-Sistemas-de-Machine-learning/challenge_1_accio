@@ -20,6 +20,8 @@ from fato_unb.rag.retriever import Evidencia, Retriever
 
 logger = logging.getLogger(__name__)
 
+MAX_ESPERA_S = 65.0  # teto da espera entre repetições (cota por minuto zera em até 60 s)
+
 
 @dataclass
 class Checagem:
@@ -53,8 +55,6 @@ class FactChecker:
         self.cfg = config or GuardrailConfig()
         self.hoje = hoje
         self._dormir = dormir
-        self._reparos: list[str] = []
-        self._brutas: list[str] = []
 
     # --------------------------------------------------------------- resultados curtos
     def _sem_llm(
@@ -125,12 +125,12 @@ class FactChecker:
             checagem.prompt_usuario = prompt
             return checagem
 
-        resposta, tokens_in, tokens_out, latencia, erro = self._chamar_llm(prompt, extras)
+        resposta, tokens_in, tokens_out, latencia, erro, reparos, brutas = self._chamar_llm(prompt)
         base = dict(
             evidencias=evidencias, usou_llm=True, modelo=self.llm.nome,
             tokens_entrada=tokens_in, tokens_saida=tokens_out,
             latencia_llm_ms=latencia, prompt_usuario=prompt,
-            respostas_brutas=list(self._brutas),
+            respostas_brutas=brutas,
         )
         if resposta is None:
             checagem = self._sem_llm(
@@ -155,7 +155,7 @@ class FactChecker:
                 confianca=saida.confianca,
                 afirmacao_analisada=alegacao.strip(),
             ),
-            guardrails=[*extras, *self._reparos, *saida.acionados],
+            guardrails=[*extras, *reparos, *saida.acionados],
             **base,
         )
 
@@ -165,7 +165,7 @@ class FactChecker:
         texto = neutralizar(ev.contexto.strip())
         return texto[: self.cfg.max_chars_contexto]
 
-    def _gerar_com_repeticao(self, prompt: str):
+    def _gerar_com_repeticao(self, prompt: str, reparos: list[str]):
         """Uma chamada ao LLM, repetida (com espera crescente) só se o erro for transitório."""
         espera = self.cfg.espera_inicial_s
         for tentativa in range(1, self.cfg.max_tentativas_llm + 1):
@@ -174,30 +174,34 @@ class FactChecker:
             except LLMError as exc:
                 if not exc.transitorio or tentativa == self.cfg.max_tentativas_llm:
                     raise
-                logger.warning(f"LLM falhou (tentativa {tentativa}), repetindo em {espera:.0f}s: {exc}")
-                self._dormir(espera)
+                # se o provedor disse quanto esperar (429), obedece, com teto para não travar o chamador
+                pausa = min(max(espera, (exc.retry_apos or 0) + 0.5), MAX_ESPERA_S)
+                logger.warning(f"LLM falhou (tentativa {tentativa}), repetindo em {pausa:.0f}s: {exc}")
+                self._dormir(pausa)
                 espera *= 3
-                if "llm_repetido" not in self._reparos:
-                    self._reparos.append("llm_repetido")
+                if "llm_repetido" not in reparos:
+                    reparos.append("llm_repetido")
                 continue
             return resultado
 
-    def _chamar_llm(self, prompt: str, extras: list[str]):
-        """Devolve (resposta|None, tokens_in, tokens_out, ms, erro).
+    def _chamar_llm(self, prompt: str):
+        """Devolve (resposta|None, tokens_in, tokens_out, ms, erro, reparos, brutas).
 
-        Repete a chamada em erro transitório do provedor e, separadamente, em JSON inválido."""
-        self._reparos = []
-        self._brutas = []
+        Repete a chamada em erro transitório do provedor e, separadamente, em JSON inválido.
+        Todo o estado é local a esta chamada: o FactChecker é usado por várias threads/usuários ao mesmo tempo."""
+        reparos: list[str] = []
+        brutas: list[str] = []
         tokens_in = tokens_out = 0
         latencia = 0.0
         for tentativa in range(1, self.cfg.max_tentativas_json + 1):
             try:
-                resp, ms = self._gerar_com_repeticao(prompt)
+                resp, ms = self._gerar_com_repeticao(prompt, reparos)
             except LLMError as exc:
                 logger.warning(f"LLM indisponível: {exc}")
-                return None, tokens_in or None, tokens_out or None, latencia or None, "llm_indisponivel"
+                return (None, tokens_in or None, tokens_out or None, latencia or None,
+                        "llm_indisponivel", reparos, brutas)
             latencia += ms
-            self._brutas.append(resp.texto)
+            brutas.append(resp.texto)
             tokens_in += resp.tokens_entrada or 0
             tokens_out += resp.tokens_saida or 0
             try:
@@ -206,6 +210,6 @@ class FactChecker:
                 logger.warning(f"Resposta inválida na tentativa {tentativa}: {exc}")
                 continue
             if tentativa > 1:
-                self._reparos.append("json_reparado")
-            return parsed, tokens_in or None, tokens_out or None, latencia, "json_invalido"
-        return None, tokens_in or None, tokens_out or None, latencia, "json_invalido"
+                reparos.append("json_reparado")
+            return parsed, tokens_in or None, tokens_out or None, latencia, "json_invalido", reparos, brutas
+        return (None, tokens_in or None, tokens_out or None, latencia, "json_invalido", reparos, brutas)

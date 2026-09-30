@@ -294,3 +294,110 @@ def test_raw_model_answers_are_kept_for_inspection_even_when_guardrails_change_t
 def test_raw_answers_are_kept_when_every_attempt_is_invalid():
     r, _ = _checker(LLMFalso("a", "b"))
     assert r.verificar("O bacharelado em IA oferta 60 vagas por ano").respostas_brutas == ["a", "b"]
+
+
+def test_checker_is_safe_to_share_between_threads():
+    """Regressão: _reparos/_brutas eram estado da instância e se misturavam entre chamadas simultâneas."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    class LLMPorAlegacao:
+        nome = "falso:threads"
+
+        def gerar(self, system, user):
+            import time
+
+            time.sleep(0.01)  # força a intercalação das threads
+            tag = "A" if "alegacao-A" in user else "B"
+            return LLMResposta(texto=json.dumps(_resp("BOATO_SEM_REGISTRO", (), (), 0.5, f"resposta {tag}")),
+                               tokens_entrada=10, tokens_saida=5)
+
+    retriever = RetrieverFalso([_ev()])
+    checker = FactChecker(retriever, LLMPorAlegacao(), GuardrailConfig(), hoje=date(2026, 9, 30))
+    alegacoes = [f"alegacao-{'A' if i % 2 else 'B'} numero {i} sobre a UnB" for i in range(40)]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        resultados = list(pool.map(checker.verificar, alegacoes))
+    for alegacao, c in zip(alegacoes, resultados):
+        tag = "A" if "alegacao-A" in alegacao else "B"
+        assert c.veredito.justificativa == f"resposta {tag}"
+        assert len(c.respostas_brutas) == 1 and f"resposta {tag}" in c.respostas_brutas[0]
+
+
+# ------------------------------------------------------------------ cota e limite de taxa
+def test_provider_retry_delay_is_parsed_from_quota_errors():
+    from fato_unb.llm.clients import _retry_apos
+
+    msg429 = "429 RESOURCE_EXHAUSTED. You exceeded your current quota. Please retry in 8.842595014s. 'retryDelay': '8s'"
+    assert _retry_apos(Exception(msg429)) == pytest.approx(8.842595014)
+    assert _retry_apos(Exception("{'retryDelay': '23s'}")) == 23.0
+    assert _retry_apos(Exception("erro qualquer")) is None
+
+
+def test_checker_waits_as_long_as_the_provider_asked_not_just_the_short_backoff():
+    llm = LLMFalso(LLMError("429 cota", transitorio=True, retry_apos=20.0), _resp())
+    esperas: list[float] = []
+    r, _ = _checker(llm, esperas=esperas)
+    c = r.verificar("O bacharelado em IA oferta 60 vagas por ano")
+    assert esperas == [20.5]  # o provedor pediu 20 s; o backoff padrão seria 1 s
+    assert c.veredito.veredito == VereditoType.CONFIRMADO_OFICIALMENTE
+
+
+def test_wait_requested_by_the_provider_is_capped():
+    llm = LLMFalso(LLMError("429", transitorio=True, retry_apos=3600.0), _resp())
+    esperas: list[float] = []
+    _checker(llm, esperas=esperas)[0].verificar("O bacharelado em IA oferta 60 vagas por ano")
+    assert esperas == [65.0]
+
+
+def test_rate_limiter_spaces_calls_to_respect_requests_per_minute():
+    from fato_unb.llm.clients import ComLimiteDeTaxa
+
+    agora = [100.0]
+    dormidas: list[float] = []
+
+    def dormir(s):
+        dormidas.append(round(s, 6))
+        agora[0] += s  # o tempo passa enquanto dorme
+
+    class Cliente:
+        nome = "falso:x"
+
+        def gerar(self, system, user):
+            return LLMResposta(texto="{}")
+
+    limitado = ComLimiteDeTaxa(Cliente(), rpm=12, relogio=lambda: agora[0], dormir=dormir)  # 1 a cada 5 s
+    for _ in range(4):
+        limitado.gerar("s", "u")
+    assert dormidas == [5.0, 5.0, 5.0]  # a 1ª passa direto; as demais esperam o intervalo
+    assert limitado.nome == "falso:x"
+
+
+def test_rate_limiter_is_safe_under_concurrent_callers():
+    """Mesmo com várias threads, os horários reservados nunca ficam mais próximos que o intervalo."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from fato_unb.llm.clients import ComLimiteDeTaxa
+
+    horarios: list[float] = []
+
+    class Cliente:
+        nome = "falso:x"
+
+        def gerar(self, system, user):
+            return LLMResposta(texto="{}")
+
+    tempo = [0.0]
+    limitado = ComLimiteDeTaxa(Cliente(), rpm=600, relogio=lambda: tempo[0], dormir=horarios.append)  # 0,1 s
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(lambda _: limitado.gerar("s", "u"), range(40)))
+    # com o relógio parado em 0, cada chamada reserva um slot distinto: as esperas são 0,1; 0,2; ... (todas diferentes)
+    assert len(horarios) == 39 and len({round(h, 6) for h in horarios}) == 39
+
+
+def test_rpm_from_environment_wraps_the_client(monkeypatch):
+    from fato_unb.llm.clients import ComLimiteDeTaxa
+
+    monkeypatch.setenv("GEMINI_API_KEY", "chave-de-teste")
+    monkeypatch.setenv("LLM_RPM", "10")
+    assert isinstance(criar_cliente("gemini"), ComLimiteDeTaxa)
+    monkeypatch.delenv("LLM_RPM")
+    assert not isinstance(criar_cliente("gemini"), ComLimiteDeTaxa)

@@ -1,4 +1,6 @@
 import os
+import re
+import threading
 import time
 from dataclasses import dataclass
 from typing import Protocol
@@ -23,12 +25,20 @@ class LLMError(RuntimeError):
     `transitorio=True` marca falhas que costumam passar sozinhas (503 "alta demanda", 429, timeout)
     e por isso valem uma nova tentativa; as demais (chave inválida, modelo inexistente) não."""
 
-    def __init__(self, mensagem: str, transitorio: bool = False):
+    def __init__(self, mensagem: str, transitorio: bool = False, retry_apos: float | None = None):
         super().__init__(mensagem)
         self.transitorio = transitorio
+        self.retry_apos = retry_apos  # segundos que o próprio provedor pediu para esperar (429)
 
 
 _CODIGOS_TRANSITORIOS = {408, 429, 500, 502, 503, 504}
+
+
+def _retry_apos(exc: Exception) -> float | None:
+    """Tempo de espera que o provedor informou na mensagem de erro ("Please retry in 8.8s", retryDelay)."""
+    texto = str(exc)
+    m = re.search(r"retry in ([\d.]+)\s*s", texto, re.IGNORECASE) or re.search(r"retryDelay'?\"?:\s*'?\"?([\d.]+)s", texto)
+    return float(m.group(1)) if m else None
 
 
 def _transitorio(exc: Exception) -> bool:
@@ -83,7 +93,7 @@ class GeminiClient:
                 ),
             )
         except Exception as exc:  # rede, cota, bloqueio: o chamador decide o que fazer
-            raise LLMError(f"Gemini falhou: {exc}", transitorio=_transitorio(exc)) from exc
+            raise LLMError(f"Gemini falhou: {exc}", transitorio=_transitorio(exc), retry_apos=_retry_apos(exc)) from exc
         usage = getattr(resp, "usage_metadata", None)
         texto = resp.text or ""
         if not texto:
@@ -118,7 +128,7 @@ class AnthropicClient:
                 messages=[{"role": "user", "content": user}],
             )
         except self._anthropic.APIError as exc:
-            raise LLMError(f"Anthropic falhou: {exc}", transitorio=_transitorio(exc)) from exc
+            raise LLMError(f"Anthropic falhou: {exc}", transitorio=_transitorio(exc), retry_apos=_retry_apos(exc)) from exc
         if resp.stop_reason == "refusal":
             raise LLMError("A Anthropic recusou a requisição (stop_reason=refusal).")
         texto = "".join(b.text for b in resp.content if b.type == "text")
@@ -131,15 +141,48 @@ class AnthropicClient:
         )
 
 
-def criar_cliente(provider: str | None = None, model: str | None = None) -> LLMClient:
-    """Cria o cliente do provedor escolhido (LLM_PROVIDER / LLM_MODEL no ambiente)."""
+class ComLimiteDeTaxa:
+    """Envolve um cliente e espaça as chamadas para não passar de `rpm` requisições por minuto.
+
+    É seguro entre threads e vale também para as repetições (cada tentativa é uma requisição que conta
+    na cota). Free tier do Gemini: 15 RPM por modelo; o limite de 429 se repete se isso não for respeitado."""
+
+    def __init__(self, cliente, rpm: float, relogio=time.monotonic, dormir=time.sleep):
+        if rpm <= 0:
+            raise ValueError("rpm deve ser positivo")
+        self.cliente = cliente
+        self.nome = cliente.nome
+        self._intervalo = 60.0 / rpm
+        self._relogio, self._dormir = relogio, dormir
+        self._lock = threading.Lock()
+        self._proximo = 0.0
+
+    def gerar(self, system: str, user: str) -> LLMResposta:
+        with self._lock:  # reserva o próximo horário livre; dorme fora do lock
+            agora = self._relogio()
+            inicio = max(agora, self._proximo)
+            self._proximo = inicio + self._intervalo
+        if inicio > agora:
+            self._dormir(inicio - agora)
+        return self.cliente.gerar(system, user)
+
+
+def criar_cliente(
+    provider: str | None = None, model: str | None = None, rpm: float | None = None
+) -> LLMClient:
+    """Cria o cliente do provedor escolhido (LLM_PROVIDER / LLM_MODEL no ambiente).
+
+    `rpm` (ou LLM_RPM) limita as requisições por minuto, útil no free tier (Gemini: 15 RPM por modelo)."""
     provider = (provider or os.getenv("LLM_PROVIDER") or DEFAULT_PROVIDER).lower()
     model = model or os.getenv("LLM_MODEL") or None
+    rpm = rpm or float(os.getenv("LLM_RPM") or 0) or None
     if provider == "gemini":
-        return GeminiClient(model=model)
-    if provider == "anthropic":
-        return AnthropicClient(model=model)
-    raise LLMError(f"Provedor '{provider}' não suportado. Use 'gemini' ou 'anthropic'.")
+        cliente: LLMClient = GeminiClient(model=model)
+    elif provider == "anthropic":
+        cliente = AnthropicClient(model=model)
+    else:
+        raise LLMError(f"Provedor '{provider}' não suportado. Use 'gemini' ou 'anthropic'.")
+    return ComLimiteDeTaxa(cliente, rpm) if rpm else cliente
 
 
 def cronometrar(fn, *args):
