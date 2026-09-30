@@ -40,11 +40,44 @@ responde 404 para contas novas. Chaves no `.env` (ignorado pelo git): `GEMINI_AP
 Todo guardrail acionado fica registrado em `Checagem.guardrails`; um veredito rebaixado explica o motivo na
 justificativa. `--bruto` mostra o prompt e a resposta crua do modelo antes dos guardrails.
 
-## Primeiro teste real (Gemini 3.1 Flash-Lite + índice e5, 6 casos)
+## Como medir o acerto
 
-Os 6 vereditos saíram como esperado (boato, sem registro, 2 desatualizados, 1 confirmado, 1 injeção ignorada).
-Com o modelo simulado há 33 testes automáticos. O adaptador da **Anthropic ainda não foi executado de verdade**
-(não há chave).
+```bash
+uv run python scripts/avaliar_vereditos.py --falhas          # 81 casos rotulados; retomável; --rpm 12 por padrão
+```
+Roda o dataset pelo fluxo real (busca -> LLM -> guardrails) e compara com o `veredito_esperado`. Mede: acerto
+geral contra a meta do projeto (> 50%), INCONCLUSIVO, **confirmações indevidas** (o erro mais grave), matriz de
+confusão, acerto por tipo e por desafio, e a **causa dos erros**: o documento certo veio? a *frase* com a
+evidência chegou ao modelo? Grava cada resultado em JSONL (retoma de onde parou e refaz os casos que falharam por
+indisponibilidade do provedor). A data de "hoje" é fixa em 2026-09-30.
+
+## Resultado (Gemini 3.1 Flash-Lite, índice e5, 81 casos rotulados)
+
+| Métrica | Valor |
+|---|---|
+| **Acerto geral** | **90,1% (73/81)**; meta do projeto > 50%: atingida |
+| Acerto entre os respondidos | 93,6% (3 INCONCLUSIVO) |
+| `falsa` / `sem_registro` | 100% (27/27 e 7/7) |
+| `verdadeira` | 83,7% |
+| `desatualizada` | 75,0% (3/4) |
+| Confirmações indevidas | **1** (c043) |
+| Custo / latência | US$ 0,075 nos 81 casos; média 9,3 s, p95 21,5 s (com repetições e limite de taxa) |
+
+**Os 8 erros por causa** (a frase com a evidência estava no texto enviado ao modelo?):
+- Frase **enviada**: 65 casos, acerto 93,8%.
+- Frase **não enviada**: 9 casos, acerto 55,6%. Aqui estão 4 dos 8 erros (c018, c033, c054, c043): a busca trouxe o
+  documento certo e o trecho errado, e o modelo agiu corretamente com o que viu. É erro de busca, não do LLM.
+- Os outros 4 (c030, c042, c062, c080) tinham a frase no contexto: o modelo foi estrito demais (c062, c080),
+  viu dados conflitantes (c030: 216 contra 218 vagas nas fontes) ou o rótulo é discutível (c042).
+
+**O erro grave (c043):** o aviso de covid de 2021 foi CONFIRMADO como orientação atual. Causa: 40 dos 128 documentos
+têm `published_at` igual ao dia da coleta (26/08/2026), inclusive esse, que o modelo viu como "publicado em
+2026-08-26". Os guardrails não pegam isso: a fonte é oficial, foi citada e a citação é literal.
+
+**Primeira rodada inválida (lição):** a primeira execução deu 39,5% porque 46 de 81 chamadas falharam por cota
+(free tier do Gemini: 15 requisições por minuto por modelo; 126 erros 429, 27 erros 503 e 2 timeouts) e
+contaram como INCONCLUSIVO. O avaliador agora limita a taxa, respeita o tempo de espera que o provedor informa,
+refaz esses casos na retomada e avisa no relatório quando as falhas de infraestrutura contaminam o número.
 
 ## Pontos para revisão dos guardrails
 
@@ -81,6 +114,15 @@ Com o modelo simulado há 33 testes automáticos. O adaptador da **Anthropic ain
     Conferir os termos de uso de dados do free tier do Gemini (não verifiquei).
 
 **Medição**
-14. **Não existe avaliador de vereditos.** O dataset de 95 casos já traz `veredito_esperado`; falta rodá-lo
-    contra o LLM para medir o acerto (meta do projeto: > 50%) e comparar modelos (Gemini 3.1 Flash-Lite,
-    Claude Haiku 4.5 etc.). Os rótulos de `falsa` misturam BOATO e DESATUALIZADO (ver item 1).
+14. **O avaliador existe** (`scripts/avaliar_vereditos.py`). Falta comparar modelos (Claude Haiku 4.5 etc.; o
+    adaptador da Anthropic ainda não foi executado de verdade) e repetir com mais casos: 81 é pouco, e com a meta
+    já atingida vale perseguir a taxa de **confirmações indevidas** (hoje 1), não o acerto geral. Os rótulos de
+    `falsa` misturam BOATO e DESATUALIZADO (ver item 1), e dois casos têm rótulo discutível (c030, c042).
+15. **Datas de publicação erradas na ingestão:** 40 de 128 documentos usam a data da coleta como `published_at`
+    (causa do c043). Extrair a data real (URL, texto "Publicado em ...", metadados) ou gravar "desconhecida" e
+    avisar o modelo. Sem isso, o veredito DESATUALIZADO depende de dado ruim.
+16. **A busca falha no nível do trecho:** em 9 de 74 casos a frase com a evidência não foi enviada ao modelo,
+    embora o documento certo tenha vindo. Opções: mais evidências ou chunks, reranker (ainda sem medição real),
+    janela de contexto maior (hoje 1.800 caracteres por evidência).
+17. **Cota do provedor:** free tier do Gemini = 15 requisições por minuto por modelo. Um bot com vários usuários
+    precisa de plano pago ou de fila; `LLM_RPM` ativa o limitador no cliente.

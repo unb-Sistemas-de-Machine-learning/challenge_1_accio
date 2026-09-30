@@ -85,3 +85,6 @@ downloads/
 # ==========================================
 CLAUDE.md
 .superpowers/
+# Resultados locais do avaliador de vereditos
+vereditos*.jsonl
+vereditos*.json
