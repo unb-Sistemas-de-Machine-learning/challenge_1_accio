@@ -5,6 +5,7 @@ requires-python = ">=3.14"
 dependencies = [
     "aiohttp>=3.14.3",
     "aiosqlite>=0.20.0",
+    "anthropic>=1.9.0",
     "apscheduler>=3.11.3",
     "asyncpg>=0.30.0",
     "babel==2.18.0",
@@ -18,6 +19,7 @@ dependencies = [
     "fastembed>=0.8.0",
     "feedparser>=6.0.14",
     "ghp-import==2.1.0",
+    "google-genai>=2.25.0",
     "idna==3.19",
     "jinja2==3.1.6",
     "markdown==3.10.3",
