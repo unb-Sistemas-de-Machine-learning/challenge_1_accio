@@ -17,6 +17,13 @@ Validar quantitativamente a acurácia e a taxa de confiança da IA contra a meta
 
 ---
 
+## 🔎 Avaliação de Recuperação (retrieval)
+* `dataset.py` / `retrieval_dataset.jsonl`: casos de teste (alegação → URL da evidência) e carregamento do corpus.
+* `retrieval.py`: `recall@k` e `MRR` por configuração (`CONFIGS`), sobre uma coleção Qdrant isolada em memória.
+* CLI: `uv run python scripts/avaliar.py --config baseline --falhas`. Detalhes em `docs/modulos/avaliacao/dataset-teste.md`.
+
+---
+
 ## 🧪 Como Executar a Avaliação
 ```bash
 # Rodar avaliação do dataset contra o pipeline RAG
