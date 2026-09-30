@@ -8,7 +8,7 @@ from fato_unb.rag.embeddings import EmbeddingService
 
 def test_chunker_noticia_pequena(mock_noticia_ru):
     """Garante que documentos curtos gerem apenas 1 chunk com metadados corretos."""
-    chunker = SemanticChunker(chunk_size=300, chunk_overlap=30)
+    chunker = SemanticChunker(chunk_size=300, overlap_sentences=1)
     chunks = chunker.chunk_document(mock_noticia_ru)
 
     assert len(chunks) == 1
@@ -29,9 +29,7 @@ def test_chunker_noticia_pequena(mock_noticia_ru):
 
 def test_chunker_documento_extenso_preserva_ordem_e_totais(mock_edital_extenso):
     """Garante divisão em múltiplos blocos respeitando sequência e totais."""
-    chunk_size = 60
-    chunk_overlap = 15
-    chunker = SemanticChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    chunker = SemanticChunker(chunk_size=60, overlap_sentences=1)
     chunks = chunker.chunk_document(mock_edital_extenso)
 
     assert len(chunks) > 1
@@ -45,18 +43,120 @@ def test_chunker_documento_extenso_preserva_ordem_e_totais(mock_edital_extenso):
         assert f"[Documento: {mock_edital_extenso.title}]" in chunk.content
 
 
-def test_chunker_overlap_mantem_continuidade(mock_edital_extenso):
-    """Valida se as últimas palavras do chunk anterior aparecem no próximo chunk."""
-    chunker = SemanticChunker(chunk_size=40, chunk_overlap=10)
+def test_chunker_overlap_repete_ultima_frase(mock_edital_extenso):
+    """A última frase de um chunk reaparece no início do seguinte (overlap em frases)."""
+    chunker = SemanticChunker(chunk_size=40, overlap_sentences=1)
     chunks = chunker.chunk_document(mock_edital_extenso)
 
     assert len(chunks) >= 2
+    ultima_frase = chunks[0].raw_text.rsplit(". ", 1)[-1]
+    assert ultima_frase in chunks[1].raw_text
 
-    # Pega palavras do final do primeiro chunk e checa presença no segundo
-    palavras_chunk_0 = chunks[0].raw_text.split()
-    fim_chunk_0 = " ".join(palavras_chunk_0[-3:])
 
-    assert fim_chunk_0 in chunks[1].raw_text
+def test_chunker_sem_overlap_nao_repete_frases(mock_edital_extenso):
+    chunker = SemanticChunker(chunk_size=40, overlap_sentences=0)
+    chunks = chunker.chunk_document(mock_edital_extenso)
+
+    assert len(chunks) >= 2
+    ultima_frase = chunks[0].raw_text.rsplit(". ", 1)[-1]
+    assert not chunks[1].raw_text.startswith(ultima_frase)
+
+
+def _doc_com_paragrafos(n_paragrafos: int, frases_por_paragrafo: int = 4):
+    from datetime import UTC, datetime
+
+    from fato_unb.ingestion.models import RawDocument, SourceType
+
+    paragrafos = []
+    for p in range(n_paragrafos):
+        frases = [f"Paragrafo {p} frase {f} traz informacao numero {p * 10 + f} sobre a universidade." for f in range(frases_por_paragrafo)]
+        paragrafos.append(" ".join(frases))
+    return RawDocument(
+        title="UnB Notícias - Titulo de teste",
+        content="\n".join(paragrafos),  # trafilatura separa parágrafos com \n simples
+        url="https://noticias.unb.br/x/1-teste",
+        source="noticias.unb.br",
+        source_type=SourceType.HTML_PAGE,
+        published_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+
+def test_chunker_divide_texto_com_quebra_de_linha_simples():
+    """Regressão: o corpus real só tem '\\n' (nunca '\\n\\n'), e isso gerava chunks gigantes."""
+    doc = _doc_com_paragrafos(n_paragrafos=10)
+    chunks = SemanticChunker(chunk_size=60, overlap_sentences=1).chunk_document(doc)
+
+    assert len(chunks) > 3
+    assert all(len(c.raw_text.split()) <= 90 for c in chunks)  # tolerância da fusão da cauda
+    assert any("\n" in c.raw_text for c in chunks)  # preserva a estrutura de parágrafos
+
+
+def test_chunker_nao_quebra_frase_em_abreviacoes():
+    from fato_unb.rag.chunker import _split_sentences
+
+    frases = _split_sentences("A Profa. Danusa Marques foi indicada. O Art. 2º prevê prazo. Fim.")
+    assert frases == ["A Profa. Danusa Marques foi indicada.", "O Art. 2º prevê prazo.", "Fim."]
+
+
+def test_chunker_parent_text_contem_o_chunk_e_e_maior():
+    doc = _doc_com_paragrafos(n_paragrafos=12)
+    chunks = SemanticChunker(chunk_size=50, overlap_sentences=1, parent_size=150).chunk_document(doc)
+
+    meio = chunks[len(chunks) // 2]
+    assert meio.raw_text in meio.parent_text
+    assert len(meio.parent_text.split()) > len(meio.raw_text.split())
+    assert len(meio.parent_text.split()) <= 150 + 30  # ~parent_size, com folga de uma frase
+
+
+def test_chunker_documento_curto_tem_parent_igual_ao_texto(mock_noticia_ru):
+    (chunk,) = SemanticChunker().chunk_document(mock_noticia_ru)
+    assert chunk.parent_text == mock_noticia_ru.content
+
+
+def test_chunker_funde_cauda_minuscula_no_chunk_anterior():
+    """Um último chunk com poucas palavras novas não deve existir isolado."""
+    doc = _doc_com_paragrafos(n_paragrafos=1, frases_por_paragrafo=9)  # 9 frases de 11 palavras
+    chunks = SemanticChunker(chunk_size=50, overlap_sentences=1, min_chunk_words=30).chunk_document(doc)
+
+    palavras_novas_ultimo = len(chunks[-1].raw_text.split())
+    assert len(chunks) == 1 or palavras_novas_ultimo >= 30
+
+
+def test_chunker_corta_frase_gigante_por_palavras():
+    from datetime import UTC, datetime
+
+    from fato_unb.ingestion.models import RawDocument, SourceType
+
+    doc = RawDocument(
+        title="t",
+        content=" ".join(["palavra"] * 500),  # uma "frase" de 500 palavras, sem pontuação
+        url="https://x.br/a",
+        source="x.br",
+        source_type=SourceType.HTML_PAGE,
+        published_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    chunks = SemanticChunker(chunk_size=100).chunk_document(doc)
+    assert len(chunks) >= 5
+    assert all(len(c.raw_text.split()) <= 150 for c in chunks)
+
+
+def test_chunker_limpa_titulo_no_cabecalho_sem_alterar_metadado():
+    doc = _doc_com_paragrafos(n_paragrafos=1)
+    (chunk, *_) = SemanticChunker().chunk_document(doc)
+    assert "[Documento: Titulo de teste]" in chunk.content
+    assert chunk.title == "UnB Notícias - Titulo de teste"
+
+    doc.title, doc.source = "Censo da Pós-Graduação – dpg", "dpg.unb.br"
+    (chunk, *_) = SemanticChunker().chunk_document(doc)
+    assert "[Documento: Censo da Pós-Graduação]" in chunk.content
+
+
+def test_chunker_ids_sao_deterministicos():
+    doc = _doc_com_paragrafos(n_paragrafos=6)
+    a = SemanticChunker(chunk_size=50).chunk_document(doc)
+    b = SemanticChunker(chunk_size=50).chunk_document(doc)
+    assert [c.chunk_id for c in a] == [c.chunk_id for c in b]
+    assert len({c.chunk_id for c in a}) == len(a)
 
 
 def test_chunker_documento_vazio(mock_noticia_ru):

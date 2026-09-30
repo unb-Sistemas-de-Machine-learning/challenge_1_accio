@@ -36,11 +36,17 @@ Contratos estritos baseados em **Pydantic v2** para garantir validação em temp
 Fatiador de texto projetado para resolver o problema de perda de contexto e corte abrupto de termos em editais e normas da UnB.
 
 #### Características do Algoritmo:
-* **Divisão Recursiva por Unidades Lógicas:** Prioriza a quebra por parágrafos duplos (`\n\n`), descendo para sentenças (`. `) e palavras (` `) apenas quando o bloco excede a janela alvo.
-* **Overlap Calibrado:** Mantém uma janela deslizante (padrão: 40 a 50 palavras) entre blocos vizinhos, garantindo continuidade de leitura em regras compostas ou datas.
+* **Unidade básica = frase:** o texto é dividido por linha (`\n`, pois o trafilatura nunca gera `\n\n`) e depois por frases, sem quebrar em abreviações ("Profa.", "Art.", "J. Silva"). Frases maiores que o chunk são cortadas por palavras.
+* **Chunk de ~120 palavras** (`chunk_size`), com **1 frase de overlap** (`overlap_sentences`). Uma cauda com poucas palavras novas (< `min_chunk_words`) é fundida ao chunk anterior.
+* **Sentence-window (`parent_text`):** cada chunk guarda o trecho ao redor (~300 palavras, `parent_size`). A busca usa o chunk pequeno; o LLM deve receber o `parent_text`.
 * **Injeção de Metadados no Conteúdo (`Context Injection`):** Cada pedaço recebe um cabeçalho fixo antes da vetorização:
   ```text
   [Documento: Circular Normativa DEG nº 02/2026]
   [Fonte: DEG | Ref: 2026/1]
 
   Art. 2º O período de ajuste extraordinário ocorrerá entre 10 e 15 de março...
+
+> **Avaliação (fase 1):** no dataset de 95 casos, o chunker novo ficou estatisticamente neutro em relação ao anterior
+> (400 palavras): MRR 0,836 contra 0,853; R@1 0,739 contra 0,761 (1 caso = 1,1 ponto). O ganho esperado é qualitativo
+> (estrutura de parágrafos, `parent_text`) e ainda não é medido pelo recall por documento. Variantes comparáveis com
+> `uv run python scripts/avaliar.py --config baseline chunk80 chunk120 chunk200`.

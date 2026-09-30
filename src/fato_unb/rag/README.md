@@ -11,7 +11,7 @@ Segmentar documentos, gerar representações vetoriais, executar busca híbrida 
 ---
 
 ## 📂 Estrutura de Arquivos
-* `chunker.py`: Algoritmo de divisão de texto com overlap calibrado (~500 tokens / 50 tokens overlap).
+* `chunker.py`: Divisão em frases, chunks de ~120 palavras com 1 frase de overlap e `parent_text` (sentence-window).
 * `embeddings.py`: Wrapper unificado para provedores de embedding (Google Gemini API / HuggingFace Local).
 * `hybrid_search.py`: Algoritmo de fusão por ranking recíproco (RRF) combinando vetores e correspondência léxica exata.
 * `prompts.py`: Templates estritos de fact-checking com regras de citação de fontes primárias.

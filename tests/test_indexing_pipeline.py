@@ -24,7 +24,7 @@ async def setup_pipeline():
     repo = StagingRepository(session_factory=session_factory)
     qdrant = QdrantClient(":memory:")
     embedder = EmbeddingService(provider="mock", mock_dimension=384)
-    chunker = SemanticChunker(chunk_size=100, chunk_overlap=10)
+    chunker = SemanticChunker(chunk_size=100, overlap_sentences=1)
 
     pipeline = IndexingPipeline(
         repository=repo,

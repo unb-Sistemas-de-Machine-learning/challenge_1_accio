@@ -48,15 +48,24 @@ def upsert_documents(
     client: QdrantClient | None = None,
     collection_name: str = "fato_unb_noticias",
     wait: bool = True,
+    sparse_on: str = "content",
 ) -> int:
-    """Calcula embeddings densos e esparsos (BM25) e persiste chunks no Qdrant de forma idempotente."""
+    """Calcula embeddings densos e esparsos (BM25) e persiste chunks no Qdrant de forma idempotente.
+
+    O denso usa sempre `content` (com cabeçalho de contexto). `sparse_on` escolhe o texto do BM25:
+    "content" (com cabeçalho) ou "raw_text" (só o trecho, sem repetir título e fonte em todo chunk).
+    """
+    if sparse_on not in ("content", "raw_text"):
+        raise ValueError("sparse_on deve ser 'content' ou 'raw_text'")
     if not chunks:
         return 0
 
     qdrant = client or get_qdrant_client()
     textos = [chunk.content for chunk in chunks]
     dense_vectors = embedder.embed_texts(textos)
-    sparse_dicts = embedder.embed_sparse_texts(textos)
+    sparse_dicts = embedder.embed_sparse_texts(
+        [getattr(chunk, sparse_on) for chunk in chunks]
+    )
 
     pontos = []
     for chunk, d_vec, s_dict in zip(chunks, dense_vectors, sparse_dicts):

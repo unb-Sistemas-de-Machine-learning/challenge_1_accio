@@ -12,6 +12,7 @@ from fato_unb.evaluation.dataset import (
     url_to_content_keys,
 )
 from fato_unb.ingestion.models import RawDocument
+from fato_unb.evaluation.legacy_chunker import LegacyWordChunker
 from fato_unb.rag.chunker import SemanticChunker
 from fato_unb.rag.embeddings import EmbeddingService
 from fato_unb.rag.pipeline import IndexingPipeline
@@ -24,15 +25,35 @@ KS = (1, 3, 5)
 class EvalConfig:
     name: str
     model_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-    chunk_size: int = 400
-    chunk_overlap: int = 50
+    chunker: str = "legacy"  # "legacy" (janela de palavras, fase 0) ou "sentence"
+    chunk_size: int = 400  # palavras
+    overlap: int = 50  # legacy: palavras; sentence: frases
+    sparse_on: str = "content"  # texto do BM25: "content" ou "raw_text"
     dedupe: bool = True
 
 
-# Novas variantes (chunk menor, e5, reranker) entram aqui nas próximas fases.
+def _sentence(name: str, **kw) -> EvalConfig:
+    return EvalConfig(name=name, chunker="sentence", **{"chunk_size": 120, "overlap": 1, **kw})
+
+
+# Novas variantes (e5, reranker) entram aqui nas próximas fases.
 CONFIGS: dict[str, EvalConfig] = {
     "baseline": EvalConfig(name="baseline"),
+    "chunk80": _sentence("chunk80", chunk_size=80),
+    "chunk120": _sentence("chunk120"),
+    "chunk200": _sentence("chunk200", chunk_size=200),
+    "chunk120-ov0": _sentence("chunk120-ov0", overlap=0),
+    "chunk120-ov2": _sentence("chunk120-ov2", overlap=2),
+    "chunk120-rawsparse": _sentence("chunk120-rawsparse", sparse_on="raw_text"),
 }
+
+
+def make_chunker(config: EvalConfig):
+    if config.chunker == "legacy":
+        return LegacyWordChunker(chunk_size=config.chunk_size, chunk_overlap=config.overlap)
+    if config.chunker == "sentence":
+        return SemanticChunker(chunk_size=config.chunk_size, overlap_sentences=config.overlap)
+    raise ValueError(f"chunker desconhecido: {config.chunker}")
 
 
 def recall_at_k(ranked_keys: list[str], relevantes: set[str], k: int) -> float:
@@ -119,7 +140,7 @@ def build_index(
     `upsert_documents` para medir exatamente o que o pipeline real produz.
     """
     client = client or QdrantClient(":memory:")
-    chunker = SemanticChunker(chunk_size=config.chunk_size, chunk_overlap=config.chunk_overlap)
+    chunker = make_chunker(config)
     pipeline = IndexingPipeline(
         repository=object(),  # não usado: só ensure_collection
         chunker=chunker,
@@ -133,7 +154,11 @@ def build_index(
     for doc in docs:
         chunks = chunker.chunk_document(doc)
         total += upsert_documents(
-            embedder=embedder, chunks=chunks, client=client, collection_name=collection
+            embedder=embedder,
+            chunks=chunks,
+            client=client,
+            collection_name=collection,
+            sparse_on=config.sparse_on,
         )
     return client, collection, total
 

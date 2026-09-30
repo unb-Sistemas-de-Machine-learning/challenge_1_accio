@@ -20,6 +20,7 @@ from fato_unb.evaluation.dataset import (  # noqa: E402
     load_corpus,
     load_dataset,
 )
+from fato_unb.rag.embeddings import EmbeddingService  # noqa: E402
 from fato_unb.evaluation.retrieval import (  # noqa: E402
     CONFIGS,
     avaliar,
@@ -42,11 +43,15 @@ def main() -> None:
     docs = load_corpus(args.corpus)
 
     resultados = []
+    embedders: dict[str, EmbeddingService] = {}  # um modelo carregado por nome, reaproveitado
     for nome in args.config:
         cfg = CONFIGS[nome]
         if args.raw:
             cfg = replace(cfg, name=f"{nome}-raw", dedupe=False)
-        resultados.append(avaliar(casos, docs, cfg))
+        if cfg.model_name not in embedders:
+            embedders[cfg.model_name] = EmbeddingService(provider="local", model_name=cfg.model_name)
+        embedder = embedders[cfg.model_name]
+        resultados.append(avaliar(casos, docs, cfg, embedder=embedder))
 
     print(formatar_tabela(resultados))
     for r in resultados:
