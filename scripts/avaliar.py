@@ -7,6 +7,7 @@ Uso:
 """
 
 import argparse
+import gc
 import json
 import sys
 import time
@@ -22,6 +23,7 @@ from fato_unb.evaluation.dataset import (  # noqa: E402
     load_dataset,
 )
 from fato_unb.rag.embeddings import EmbeddingService  # noqa: E402
+from fato_unb.rag.reranker import Reranker  # noqa: E402
 from fato_unb.evaluation.retrieval import (  # noqa: E402
     CONFIGS,
     avaliar,
@@ -45,16 +47,24 @@ def main() -> None:
     docs = load_corpus(args.corpus)
 
     resultados = []
-    embedders: dict[str, EmbeddingService] = {}  # um modelo carregado por nome, reaproveitado
+    rerankers: dict[str, Reranker] = {}
+    embedders: dict[str, EmbeddingService] = {}  # modelo atual, reaproveitado entre configs
     for nome in args.config:
         cfg = CONFIGS[nome]
         if args.raw:
             cfg = replace(cfg, name=f"{nome}-raw", dedupe=False)
         if cfg.model_name not in embedders:
+            embedders.clear()  # só um modelo grande por vez na memória (e5-large ~2,2 GB, jina-v3 ~2,3 GB)
+            gc.collect()
             embedders[cfg.model_name] = EmbeddingService(provider="local", model_name=cfg.model_name)
         embedder = embedders[cfg.model_name]
+        reranker = None
+        if cfg.reranker:
+            if cfg.reranker not in rerankers:
+                rerankers[cfg.reranker] = Reranker(model_name=cfg.reranker)
+            reranker = rerankers[cfg.reranker]
         t0 = time.perf_counter()
-        resultados.append(avaliar(casos, docs, cfg, embedder=embedder))
+        resultados.append(avaliar(casos, docs, cfg, embedder=embedder, reranker=reranker))
         print(
             f"[{len(resultados)}/{len(args.config)}] {cfg.name} pronto em {time.perf_counter() - t0:.0f}s",
             file=sys.stderr,

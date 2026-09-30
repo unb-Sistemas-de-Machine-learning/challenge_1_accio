@@ -16,7 +16,8 @@ from fato_unb.ingestion.models import RawDocument
 from fato_unb.evaluation.legacy_chunker import LegacyWordChunker
 from fato_unb.rag.chunker import SemanticChunker
 from fato_unb.rag.embeddings import EmbeddingService
-from fato_unb.rag.pipeline import IndexingPipeline
+from fato_unb.rag.reranker import DEFAULT_RERANKER_MODEL, Reranker
+from fato_unb.vectorstore.collections import ensure_collection
 from fato_unb.vectorstore.operations import buscar, upsert_documents
 
 KS = (1, 3, 5)
@@ -30,6 +31,9 @@ class EvalConfig:
     chunk_size: int = 400  # palavras
     overlap: int = 50  # legacy: palavras; sentence: frases
     sparse_on: str = "content"  # texto do BM25: "content" ou "raw_text"
+    reranker: str | None = None  # modelo do cross-encoder; None = sem reranking
+    candidatos: int = 20  # quantos candidatos da busca híbrida o reranker reordena
+    sparse_idf: bool = False  # modificador IDF do Qdrant no índice esparso (False = comportamento da fase 0)
     dedupe: bool = True
 
 
@@ -37,7 +41,11 @@ def _sentence(name: str, **kw) -> EvalConfig:
     return EvalConfig(name=name, chunker="sentence", **{"chunk_size": 120, "overlap": 1, **kw})
 
 
-# Novas variantes (e5, reranker) entram aqui nas próximas fases.
+E5 = "intfloat/multilingual-e5-large"
+JINA3 = "jinaai/jina-embeddings-v3"
+RERANKER = DEFAULT_RERANKER_MODEL
+
+# Novas variantes (reranker) entram aqui na próxima fase.
 CONFIGS: dict[str, EvalConfig] = {
     "baseline": EvalConfig(name="baseline"),
     "chunk80": _sentence("chunk80", chunk_size=80),
@@ -46,6 +54,17 @@ CONFIGS: dict[str, EvalConfig] = {
     "chunk120-ov0": _sentence("chunk120-ov0", overlap=0),
     "chunk120-ov2": _sentence("chunk120-ov2", overlap=2),
     "chunk120-rawsparse": _sentence("chunk120-rawsparse", sparse_on="raw_text"),
+    # Fase 2: IDF no BM25 e modelos de embedding (cada um com o chunker antigo e o novo)
+    "baseline-idf": EvalConfig(name="baseline-idf", sparse_idf=True),
+    "chunk120-idf": _sentence("chunk120-idf", sparse_idf=True),
+    "baseline-idf-rr": EvalConfig(name="baseline-idf-rr", sparse_idf=True, reranker=RERANKER),
+    "chunk120-idf-rr": _sentence("chunk120-idf-rr", sparse_idf=True, reranker=RERANKER),
+    "e5-c400": EvalConfig(name="e5-c400", model_name=E5, sparse_idf=True),
+    "e5-c120": _sentence("e5-c120", model_name=E5, sparse_idf=True),
+    "jina3-c400": EvalConfig(name="jina3-c400", model_name=JINA3, sparse_idf=True),
+    "jina3-c120": _sentence("jina3-c120", model_name=JINA3, sparse_idf=True),
+    "e5-c120-rr": _sentence("e5-c120-rr", model_name=E5, sparse_idf=True, reranker=RERANKER),
+    "e5-c400-rr": EvalConfig(name="e5-c400-rr", model_name=E5, sparse_idf=True, reranker=RERANKER),
 }
 
 
@@ -156,14 +175,7 @@ def build_index(
     """
     client = client or QdrantClient(":memory:")
     chunker = make_chunker(config)
-    pipeline = IndexingPipeline(
-        repository=object(),  # não usado: só ensure_collection
-        chunker=chunker,
-        embedder=embedder,
-        qdrant_client=client,
-        collection_name=collection,
-    )
-    pipeline.ensure_collection()
+    ensure_collection(client, collection, embedder.vector_dimension, sparse_idf=config.sparse_idf)
 
     total = 0
     for doc in docs:
@@ -185,6 +197,7 @@ def avaliar(
     embedder: EmbeddingService | None = None,
     client: QdrantClient | None = None,
     collection: str = "eval_retrieval",
+    reranker: Reranker | None = None,
 ) -> ResultadoAvaliacao:
     url_map = url_to_content_keys(docs)  # sempre sobre o corpus completo
     docs_indexados = dedupe_corpus(docs) if config.dedupe else docs
@@ -202,6 +215,8 @@ def avaliar(
             client=client,
             collection_name=collection,
             limit=max(KS),
+            reranker=reranker,
+            candidatos=config.candidatos,
         )
         tempos.append((time.perf_counter() - t0) * 1000)
 
