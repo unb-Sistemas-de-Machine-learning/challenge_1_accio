@@ -26,6 +26,13 @@ async def test_repo():
     await engine.dispose()
 
 
+@pytest.fixture(autouse=True)
+def _no_full_text_download():
+    """Estes testes usam URLs falsas: o enriquecimento com texto completo não deve ir à rede."""
+    with patch("fato_unb.ingestion.scheduler.enrich_new_documents", new_callable=AsyncMock):
+        yield
+
+
 @pytest.mark.anyio
 async def test_run_rss_ingestion_persists_to_staging_and_file(tmp_path, test_repo):
     sample_docs = [

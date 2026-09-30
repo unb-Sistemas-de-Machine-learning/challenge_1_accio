@@ -6,7 +6,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from fato_unb.ingestion.crawler import load_known_urls, run_crawler
 from fato_unb.ingestion.models import RawDocument
-from fato_unb.ingestion.rss import fetch_unb_rss_feed
+from fato_unb.ingestion.rss import enrich_new_documents, fetch_unb_rss_feed
 from fato_unb.rag.pipeline import IndexingPipeline, IndexingReport
 from fato_unb.storage import StagingRepository, init_db
 
@@ -16,10 +16,15 @@ logger = logging.getLogger(__name__)
 async def run_rss_ingestion(
     output_file: str | None = "dados.txt",
     repository: StagingRepository | None = None,
+    fetch_full_text: bool = True,
 ) -> list[RawDocument]:
     logger.info("Iniciando task de ingestão via RSS...")
     repo = repository or StagingRepository()
     docs = fetch_unb_rss_feed()
+
+    if docs and fetch_full_text:
+        # o feed traz só o resumo; baixa o texto completo das notícias novas
+        await enrich_new_documents(docs, repo)
 
     if docs:
         saved_count = await repo.save_documents(docs)
