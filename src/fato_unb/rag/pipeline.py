@@ -2,12 +2,12 @@ import logging
 from dataclasses import dataclass
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, SparseVectorParams, VectorParams
 
 from fato_unb.rag.chunker import SemanticChunker
 from fato_unb.rag.embeddings import EmbeddingService
 from fato_unb.storage.repository import StagingRepository
 from fato_unb.vectorstore.client import get_qdrant_client
+from fato_unb.vectorstore.collections import collection_name_for, ensure_collection
 from fato_unb.vectorstore.operations import NAMESPACE, upsert_documents
 
 logger = logging.getLogger(__name__)
@@ -28,29 +28,18 @@ class IndexingPipeline:
         chunker: SemanticChunker | None = None,
         embedder: EmbeddingService | None = None,
         qdrant_client: QdrantClient | None = None,
-        collection_name: str = "fato_unb_noticias",
+        collection_name: str | None = None,
         batch_size: int = 64,
     ):
         self.repository = repository or StagingRepository()
         self.chunker = chunker or SemanticChunker()
         self.embedder = embedder or EmbeddingService(provider="local")
         self.client = qdrant_client or get_qdrant_client()
-        self.collection_name = collection_name
+        self.collection_name = collection_name or collection_name_for(self.embedder)
         self.batch_size = batch_size
 
     def ensure_collection(self) -> None:
-        if not self.client.collection_exists(self.collection_name):
-            self.client.create_collection(
-                collection_name=self.collection_name,
-                vectors_config={
-                    "dense": VectorParams(
-                        size=self.embedder.vector_dimension,
-                        distance=Distance.COSINE,
-                    )
-                },
-                sparse_vectors_config={"sparse": SparseVectorParams()},
-            )
-            logger.info(f"Coleção Qdrant '{self.collection_name}' criada com sucesso.")
+        ensure_collection(self.client, self.collection_name, self.embedder.vector_dimension)
 
     async def run(self, max_docs: int = 500) -> IndexingReport:
         report = IndexingReport()
