@@ -80,7 +80,44 @@ Executa um ciclo completo de ponta a ponta: Ingestão (Crawler e RSS) -> Persist
 uv run python demo.py
 ```
 
-### 3. Executar o Agendador Contínuo (Scheduler)
+### 3. Buscar evidências para uma alegação
+Consulta a coleção indexada usando o mesmo modelo de embedding do índice (busca híbrida denso + BM25 e, se configurado, reranker):
+
+```bash
+uv run python demo_busca.py "A UnB vai cobrar mensalidade?" -l 3 -c
+```
+
+Em código (é a interface que o bot do Telegram deve usar):
+
+```python
+from fato_unb.rag.retriever import Retriever
+
+retriever = Retriever.from_env()          # lê EMBEDDING_MODEL e RERANKER_MODEL
+for ev in retriever.buscar("O RU aceita a carteirinha antiga?", limit=3):
+    print(ev.title, ev.url, ev.score)      # ev.contexto = trecho ao redor, para o LLM
+```
+
+### 4. Trocar o modelo ou o chunker (reindexar)
+Vetores de modelos diferentes não podem conviver na mesma coleção: cada modelo tem a sua
+(`fato_unb_noticias` para o padrão, `fato_unb_noticias__<modelo>` para os demais). Após mudar
+`EMBEDDING_MODEL`, o chunker ou a configuração do índice, reindexe todo o staging:
+
+```bash
+uv run python scripts/reindexar.py        # pede confirmação antes de recriar a coleção
+```
+
+Variáveis (veja `.env.example`): `EMBEDDING_MODEL`, `RERANKER_MODEL` (vazio = sem reranker) e
+`FASTEMBED_CACHE_PATH`. **Se o seu `/tmp` for tmpfs (RAM), defina `FASTEMBED_CACHE_PATH` para um
+diretório em disco**: modelos como o e5-large (2,2 GB) enchem a memória e o sistema mata o processo.
+
+### 5. Avaliar a recuperação
+```bash
+uv run python scripts/avaliar.py --config baseline chunk120-idf e5-c120
+```
+Métricas por documento, por chunk e por contexto entregue ao LLM em
+`docs/modulos/avaliacao/dataset-teste.md`.
+
+### 6. Executar o Agendador Contínuo (Scheduler)
 Inicia o processo em background que monitora e roda o ciclo de ingestão e indexação a cada 1 hora:
 
 ```bash

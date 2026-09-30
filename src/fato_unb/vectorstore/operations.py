@@ -18,6 +18,7 @@ from qdrant_client.models import (
 
 from fato_unb.rag.embeddings import EmbeddingService
 from fato_unb.rag.models import DocumentChunk
+from fato_unb.rag.reranker import Reranker, rerank_points
 from fato_unb.vectorstore.client import get_qdrant_client
 
 logger = logging.getLogger(__name__)
@@ -98,7 +99,12 @@ def buscar(
     data_inicio: datetime | None = None,
     data_fim: datetime | None = None,
     limit: int = 5,
+    reranker: Reranker | None = None,
+    candidatos: int = 20,
 ):
+    """Busca híbrida (denso + BM25 com RRF). Com `reranker`, recupera `candidatos` e reordena.
+
+    Devolve o objeto do Qdrant com `.points` (no máximo `limit`)."""
     qdrant = client or get_qdrant_client()
     query_expanded = expand_acronyms(query)
 
@@ -118,26 +124,31 @@ def buscar(
         condicoes.append(FieldCondition(key="published_at", range=DatetimeRange(gte=data_inicio, lte=data_fim)))
 
     filtro = Filter(must=condicoes) if condicoes else None
+    buscar_n = max(limit, candidatos) if reranker else limit
 
     try:
         # Busca híbrida nativa com Reciprocal Rank Fusion (RRF)
-        return qdrant.query_points(
+        resposta = qdrant.query_points(
             collection_name=collection_name,
             prefetch=[
-                Prefetch(query=vetor_denso, using="dense", limit=limit * 2, filter=filtro),
-                Prefetch(query=vetor_esparso, using="sparse", limit=limit * 2, filter=filtro),
+                Prefetch(query=vetor_denso, using="dense", limit=buscar_n * 2, filter=filtro),
+                Prefetch(query=vetor_esparso, using="sparse", limit=buscar_n * 2, filter=filtro),
             ],
             query=FusionQuery(fusion=Fusion.RRF),
-            limit=limit,
+            limit=buscar_n,
         )
     except Exception as exc:
         logger.warning(
             f"Busca híbrida indisponível na coleção '{collection_name}', recorrendo à busca densa: {exc}"
         )
-        return qdrant.query_points(
+        resposta = qdrant.query_points(
             collection_name=collection_name,
             query=vetor_denso,
             using="dense",
             query_filter=filtro,
-            limit=limit,
+            limit=buscar_n,
         )
+
+    if reranker:
+        resposta.points = rerank_points(reranker, query, resposta.points, limit)
+    return resposta

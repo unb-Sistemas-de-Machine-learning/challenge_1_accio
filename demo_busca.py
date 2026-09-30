@@ -5,8 +5,7 @@ from pathlib import Path
 # Garante importação do pacote fato_unb a partir de src
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from fato_unb.rag.embeddings import EmbeddingService
-from fato_unb.vectorstore.operations import buscar
+from fato_unb.rag.retriever import Retriever
 from fato_unb.vectorstore.client import get_qdrant_client
 
 logging.basicConfig(
@@ -18,55 +17,43 @@ logger = logging.getLogger("demo_busca")
 
 def run_search(query: str, limit: int = 3, completo: bool = False):
     client = get_qdrant_client()
-    collection_name = "fato_unb_noticias"
+    logger.info("Carregando modelos (embedding e, se configurado, reranker)...")
+    retriever = Retriever.from_env()
+    collection_name = retriever.collection_name
 
     if not client.collection_exists(collection_name):
         logger.error(
             f"Coleção '{collection_name}' não encontrada no Qdrant.\n"
-            "Certifique-se de iniciar os containers (`docker compose up -d`) e rodar o pipeline primeiro (`uv run python demo.py`)."
+            "Suba os containers (`docker compose up -d`) e indexe: `uv run python demo.py` "
+            "ou `uv run python scripts/reindexar.py`."
         )
         return
 
-    logger.info(f"Carregando modelo de embeddings para consultar: '{query}'...")
-    embedder = EmbeddingService(provider="local")
-
-    logger.info(f"Executando busca vetorial híbrida na coleção '{collection_name}'...")
-    resultado = buscar(query=query, embedder=embedder, limit=limit)
-
-    pontos = getattr(resultado, "points", [])
-    if not pontos:
+    logger.info(f"Consultando '{collection_name}': '{query}'")
+    evidencias = retriever.buscar(query, limit=limit)
+    if not evidencias:
         print("\nNenhum documento relevante encontrado para essa consulta.")
         return
 
-    print(f"\n========================================================")
-    print(f" RESULTADOS DA BUSCA SEMÂNTICA NO QDRANT")
-    print(f" Pergunta: '{query}'")
-    print(f" Total de chunks retornados: {len(pontos)}")
-    print(f"========================================================\n")
+    modo = "reranker" if retriever.reranker else "busca híbrida (RRF)"
+    print("\n========================================================")
+    print(f" EVIDÊNCIAS PARA: '{query}'")
+    print(f" Modelo: {retriever.embedder.model_name} | Ordenação: {modo}")
+    print(f" Páginas distintas retornadas: {len(evidencias)}")
+    print("========================================================\n")
 
-    for i, ponto in enumerate(pontos, 1):
-        payload = ponto.payload or {}
-        score = getattr(ponto, "score", 0.0)
-        titulo = payload.get("title", "Sem título")
-        fonte = payload.get("source", "Desconhecida")
-        semestre = payload.get("semester_ref", "Geral")
-        url = payload.get("url", "Sem URL")
-        chunk_idx = payload.get("chunk_index", 0)
-        total_chunks = payload.get("total_chunks", 1)
-        raw_text = payload.get("raw_text", "")
-
-        print(f"[{i}] Relevância (Score): {score:.4f}")
-        print(f"    Título:   {titulo}")
-        print(f"    Fonte:    {fonte} (Ref: {semestre}) | Bloco: {chunk_idx + 1}/{total_chunks}")
-        print(f"    URL:      {url}")
-
+    for i, ev in enumerate(evidencias, 1):
+        print(f"[{i}] Score: {ev.score:.4f} ({'reranker' if ev.reranked else 'RRF'})")
+        print(f"    Título:   {ev.title}")
+        print(f"    Fonte:    {ev.source} (Ref: {ev.semester_ref or 'Geral'}) | {ev.published_at[:10]}")
+        print(f"    URL:      {ev.url}")
+        print("\n    --- TRECHO (chunk recuperado) ---")
+        print(f"{ev.trecho.strip()}\n")
         if completo:
-            print(f"\n    --- TRECHO COMPLETO DO BANCO (CHUNK) ---")
-            print(f"{raw_text.strip()}\n")
+            print("    --- CONTEXTO ENTREGUE AO LLM (parent_text) ---")
+            print(f"{ev.contexto.strip()}\n")
         else:
-            preview = raw_text[:250].strip() + ("..." if len(raw_text) > 250 else "")
-            print(f"    Trecho:   {preview}")
-            print("    (Dica: use -c ou --completo para ver o texto completo deste trecho)")
+            print("    (Dica: use -c ou --completo para ver também o contexto maior entregue ao LLM)")
         print("-" * 56)
 
 
