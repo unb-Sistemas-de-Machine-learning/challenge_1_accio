@@ -4,7 +4,7 @@ import re
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, Modifier, SparseVectorParams, VectorParams
 
-from fato_unb.rag.embeddings import DEFAULT_DENSE_MODEL, EmbeddingService
+from fato_unb.rag.embeddings import LEGACY_DENSE_MODEL, EmbeddingService
 from fato_unb.vectorstore.client import get_qdrant_client
 
 logger = logging.getLogger(__name__)
@@ -15,10 +15,11 @@ BASE_COLLECTION = "fato_unb_noticias"
 def collection_name_for(embedder: EmbeddingService, base: str = BASE_COLLECTION) -> str:
     """Nome da coleção para o modelo denso em uso.
 
-    O modelo padrão mantém o nome histórico; outros modelos ganham sufixo, porque vetores de
-    modelos diferentes (dimensão e espaço) não podem conviver na mesma coleção.
+    Só o MiniLM, usado nas primeiras fases, mantém o nome histórico; os demais modelos (inclusive
+    o padrão atual) ganham sufixo, porque vetores de modelos diferentes (dimensão e espaço) não
+    podem conviver na mesma coleção.
     """
-    if embedder.model_name == DEFAULT_DENSE_MODEL:
+    if embedder.model_name == LEGACY_DENSE_MODEL:
         return base
     slug = re.sub(r"[^a-z0-9]+", "-", embedder.model_name.split("/")[-1].lower()).strip("-")
     return f"{base}__{slug}"

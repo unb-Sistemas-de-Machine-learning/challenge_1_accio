@@ -1,7 +1,7 @@
 import pytest
 
 from fato_unb.rag.chunker import SemanticChunker
-from fato_unb.rag.embeddings import EmbeddingService
+from fato_unb.rag.embeddings import LEGACY_DENSE_MODEL, EmbeddingService
 
 # Testes do SemanticChunker (TASK-3.1)
 
@@ -201,7 +201,7 @@ def test_embedding_service_provedor_invalido():
 
 def test_local_fastembed_service():
     """Testa geração real de vetores via fastembed (ONNX)."""
-    embedder = EmbeddingService(provider="local")
+    embedder = EmbeddingService(model_name=LEGACY_DENSE_MODEL, provider="local")
     texts = ["Circular normativa do Decanato de Graduação da UnB."]
 
     vectors = embedder.embed_texts(texts)
@@ -228,7 +228,7 @@ def test_sparse_embedding_service_mock():
 
 def test_sparse_embedding_service_local():
     """Valida geração de vetores esparsos (BM25) reais via fastembed."""
-    embedder = EmbeddingService(provider="local")
+    embedder = EmbeddingService(model_name=LEGACY_DENSE_MODEL, provider="local")
     sparse_texts = embedder.embed_sparse_texts(["Restaurante Universitário da UnB"])
     assert len(sparse_texts) == 1
     assert len(sparse_texts[0]["indices"]) > 0

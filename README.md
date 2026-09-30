@@ -99,7 +99,7 @@ for ev in retriever.buscar("O RU aceita a carteirinha antiga?", limit=3):
 
 ### 4. Trocar o modelo ou o chunker (reindexar)
 Vetores de modelos diferentes não podem conviver na mesma coleção: cada modelo tem a sua
-(`fato_unb_noticias` para o padrão, `fato_unb_noticias__<modelo>` para os demais). Após mudar
+(`fato_unb_noticias__multilingual-e5-large` para o padrão atual; `fato_unb_noticias` guarda os dados do MiniLM antigo). Após mudar
 `EMBEDDING_MODEL`, o chunker ou a configuração do índice, reindexe todo o staging:
 
 ```bash

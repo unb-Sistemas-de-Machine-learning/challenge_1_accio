@@ -3,7 +3,11 @@ from functools import cache
 
 from fastembed import SparseTextEmbedding, TextEmbedding
 
-DEFAULT_DENSE_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+# Modelo padrão: no dataset de 95 casos o e5-large elevou o R@1 de 0,761 para 0,943 sobre o MiniLM
+# (ver docs/modulos/avaliacao). Custa ~3,7x mais por consulta e 2,2 GB de memória.
+DEFAULT_DENSE_MODEL = "intfloat/multilingual-e5-large"
+# Modelo usado até a fase 1; é o único que mantém o nome de coleção histórico (`fato_unb_noticias`).
+LEGACY_DENSE_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 DEFAULT_SPARSE_MODEL = "Qdrant/bm25"
 
 # O fastembed NÃO aplica estes prefixos (verificado no código do fastembed 0.8): sem eles o e5

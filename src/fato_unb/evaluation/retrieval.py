@@ -63,6 +63,9 @@ CONFIGS: dict[str, EvalConfig] = {
     "e5-c120": _sentence("e5-c120", model_name=E5, sparse_idf=True),
     "jina3-c400": EvalConfig(name="jina3-c400", model_name=JINA3, sparse_idf=True),
     "jina3-c120": _sentence("jina3-c120", model_name=JINA3, sparse_idf=True),
+    # e5 com o chunker NOVO em tamanhos maiores (e5-c400 usa o chunker antigo, por janela de palavras)
+    "e5-s200": _sentence("e5-s200", model_name=E5, sparse_idf=True, chunk_size=200),
+    "e5-s400": _sentence("e5-s400", model_name=E5, sparse_idf=True, chunk_size=400),
     "e5-c120-rr": _sentence("e5-c120-rr", model_name=E5, sparse_idf=True, reranker=RERANKER),
     "e5-c400-rr": EvalConfig(name="e5-c400-rr", model_name=E5, sparse_idf=True, reranker=RERANKER),
 }

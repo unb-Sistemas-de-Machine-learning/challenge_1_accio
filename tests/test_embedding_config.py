@@ -5,6 +5,7 @@ from qdrant_client.models import Modifier
 
 from fato_unb.rag.embeddings import (
     DEFAULT_DENSE_MODEL,
+    LEGACY_DENSE_MODEL,
     EmbeddingService,
     model_dimension,
     model_prefixes,
@@ -20,27 +21,31 @@ E5 = "intfloat/multilingual-e5-large"
 
 def test_model_prefixes_only_for_e5():
     assert model_prefixes(E5) == ("query: ", "passage: ")
-    assert model_prefixes(DEFAULT_DENSE_MODEL) == ("", "")
+    assert model_prefixes(LEGACY_DENSE_MODEL) == ("", "")
     assert model_prefixes("jinaai/jina-embeddings-v3") == ("", "")
 
 
 def test_model_dimension_comes_from_catalog_without_loading_the_model():
-    assert model_dimension(DEFAULT_DENSE_MODEL) == 384
+    assert model_dimension(LEGACY_DENSE_MODEL) == 384
     assert model_dimension(E5) == 1024
     with pytest.raises(ValueError, match="catálogo"):
         model_dimension("modelo/que-nao-existe")
 
 
+def test_default_model_is_e5_large():
+    assert DEFAULT_DENSE_MODEL == E5
+
+
 def test_embedding_model_can_come_from_environment(monkeypatch):
-    monkeypatch.setenv("EMBEDDING_MODEL", E5)
-    assert EmbeddingService(provider="mock").model_name == E5
+    monkeypatch.setenv("EMBEDDING_MODEL", LEGACY_DENSE_MODEL)
+    assert EmbeddingService(provider="mock").model_name == LEGACY_DENSE_MODEL
     monkeypatch.delenv("EMBEDDING_MODEL")
     assert EmbeddingService(provider="mock").model_name == DEFAULT_DENSE_MODEL
 
 
 def test_explicit_model_name_wins_over_environment(monkeypatch):
     monkeypatch.setenv("EMBEDDING_MODEL", E5)
-    assert EmbeddingService(model_name=DEFAULT_DENSE_MODEL, provider="mock").model_name == DEFAULT_DENSE_MODEL
+    assert EmbeddingService(model_name=LEGACY_DENSE_MODEL, provider="mock").model_name == LEGACY_DENSE_MODEL
 
 
 class _FakeModel:
@@ -75,16 +80,17 @@ def test_e5_receives_query_and_passage_prefixes():
 
 
 def test_models_without_prefix_receive_raw_text():
-    service, fake = _service_with_fake_model(DEFAULT_DENSE_MODEL)
+    service, fake = _service_with_fake_model(LEGACY_DENSE_MODEL)
     service.embed_texts(["texto A"])
     service.embed_query("pergunta")
     assert fake.passages == ["texto A"]
     assert fake.queries == ["pergunta"]
 
 
-def test_collection_name_keeps_legacy_name_for_default_model():
-    assert collection_name_for(EmbeddingService(provider="mock")) == BASE_COLLECTION
-    assert collection_name_for(EmbeddingService(model_name=DEFAULT_DENSE_MODEL, provider="mock")) == BASE_COLLECTION
+def test_collection_name_keeps_legacy_name_only_for_the_minilm():
+    assert collection_name_for(EmbeddingService(model_name=LEGACY_DENSE_MODEL, provider="mock")) == BASE_COLLECTION
+    # o modelo padrão atual (e5-large) usa coleção própria, que não colide com os dados do MiniLM
+    assert collection_name_for(EmbeddingService(provider="mock")) == f"{BASE_COLLECTION}__multilingual-e5-large"
     assert collection_name_for(EmbeddingService(model_name=E5, provider="mock")) == f"{BASE_COLLECTION}__multilingual-e5-large"
 
 
