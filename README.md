@@ -117,7 +117,17 @@ uv run python scripts/avaliar.py --config baseline chunk120-idf e5-c120
 Métricas por documento, por chunk e por contexto entregue ao LLM em
 `docs/modulos/avaliacao/dataset-teste.md`.
 
-### 6. Executar o Agendador Contínuo (Scheduler)
+### 6. Verificar uma alegação com o LLM (fluxo completo)
+Busca as evidências e pede o veredito a um modelo em nuvem, com guardrails de entrada e de saída
+(lista e códigos em `src/fato_unb/llm/guardrails.py`). Requer `GEMINI_API_KEY` (ou `ANTHROPIC_API_KEY`) no `.env`:
+
+```bash
+uv run python scripts/checar.py "As inscrições do PAS 1 vão até 30 de setembro"
+uv run python scripts/checar.py "..." --dry-run    # mostra o prompt exato, sem chamar o modelo
+uv run python scripts/checar.py "..." --json       # só o VereditoJSON
+```
+
+### 7. Executar o Agendador Contínuo (Scheduler)
 Inicia o processo em background que monitora e roda o ciclo de ingestão e indexação a cada 1 hora:
 
 ```bash
