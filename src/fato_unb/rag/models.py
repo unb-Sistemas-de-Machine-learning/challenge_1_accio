@@ -1,5 +1,5 @@
 from enum import Enum
-
+from datetime import datetime
 from pydantic import BaseModel, Field, HttpUrl
 
 
@@ -27,6 +27,7 @@ class DocumentChunk(BaseModel):
     url: HttpUrl
     source: str
     semester_ref: str | None = None
+    published_at: datetime
 
 
 class FonteCitada(BaseModel):
