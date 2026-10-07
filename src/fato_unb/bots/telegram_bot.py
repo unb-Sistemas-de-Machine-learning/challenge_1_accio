@@ -9,9 +9,10 @@ from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandl
 from telegram.helpers import escape_markdown
 
 from fato_unb.bots.privacy import FiltroPII, scrub
-from fato_unb.rag.embeddings import EmbeddingService
-from fato_unb.rag.models import FonteCitada, VereditoJSON, VereditoType
-from fato_unb.vectorstore.operations import buscar
+from fato_unb.llm.checker import FactChecker
+from fato_unb.llm.clients import LLMError, criar_cliente
+from fato_unb.rag.models import VereditoJSON, VereditoType
+from fato_unb.rag.retriever import Retriever
 
 load_dotenv()
 
@@ -52,16 +53,15 @@ EMOJI_VEREDITO = {
     VereditoType.INCONCLUSIVO: "❓",
 }
 
-SIMILARIDADE_MINIMA = 0.4
-
-_embedder: EmbeddingService | None = None
+_fact_checker: FactChecker | None = None
 
 
-def obter_embedder() -> EmbeddingService:
-    global _embedder
-    if _embedder is None:
-        _embedder = EmbeddingService(provider="local")
-    return _embedder
+def obter_fact_checker() -> FactChecker:
+    global _fact_checker
+    if _fact_checker is None:
+        llm = criar_cliente()
+        _fact_checker = FactChecker(Retriever.from_env(), llm)
+    return _fact_checker
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -78,61 +78,24 @@ async def privacidade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await update.message.reply_text(TEXTO_PRIVACIDADE)
 
 
-def montar_veredito_provisorio(texto: str, pontos) -> VereditoJSON:
-    fontes: list[FonteCitada] = []
-    urls_vistas: set[str] = set()
-    confianca = 0.0
-
-    for ponto in pontos:
-        confianca = max(confianca, ponto.score)
-        if ponto.score < SIMILARIDADE_MINIMA:
-            continue
-        url = ponto.payload["url"]
-        if url in urls_vistas:
-            continue
-        urls_vistas.add(url)
-        fontes.append(
-            FonteCitada(
-                title=ponto.payload["title"],
-                url=url,
-                source=ponto.payload["source"],
-            )
-        )
-
-    confianca = min(max(confianca, 0.0), 1.0)
-
-    if fontes:
-        justificativa = (
-            "Ainda não tenho um modelo de linguagem para julgar se isso é "
-            "verdadeiro ou falso — essa parte ainda está em desenvolvimento. "
-            "Encontrei estas notícias oficiais relacionadas ao assunto; vale a "
-            "pena conferir antes de espalhar a informação."
-        )
-    else:
-        justificativa = (
-            "Ainda não tenho um modelo de linguagem para julgar se isso é "
-            "verdadeiro ou falso, e não encontrei nenhuma notícia oficial "
-            "relacionada na nossa base. Isso não significa que seja falso — "
-            "pode ser um assunto muito recente ou específico."
-        )
-
-    return VereditoJSON(
-        veredito=VereditoType.INCONCLUSIVO,
-        justificativa=justificativa,
-        fontes=fontes,
-        confianca=confianca,
-        afirmacao_analisada=texto,
-    )
-
-
-def verificar_afirmacao_provisoria(texto: str) -> VereditoJSON:
+def verificar_afirmacao(texto: str) -> VereditoJSON:
     try:
-        resultado = buscar(texto, obter_embedder(), limit=3)
-        pontos = resultado.points
-    except Exception:
-        logger.exception("Falha ao buscar fontes relacionadas no Qdrant")
-        pontos = []
-    return montar_veredito_provisorio(texto, pontos)
+        checker = obter_fact_checker()
+    except LLMError:
+        logger.exception("Não consegui criar o cliente de LLM")
+        return VereditoJSON(
+            veredito=VereditoType.INCONCLUSIVO,
+            justificativa=(
+                "Não consegui acessar o modelo de linguagem agora (verifique a "
+                "chave de API configurada). Tente novamente mais tarde."
+            ),
+            fontes=[],
+            confianca=0.0,
+            afirmacao_analisada=texto,
+        )
+
+    checagem = checker.verificar(texto)
+    return checagem.veredito
 
 
 def formatar_veredito(veredito: VereditoJSON) -> str:
@@ -213,7 +176,7 @@ async def mencao(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     afirmacao = scrub(afirmacao)
-    veredito = await asyncio.to_thread(verificar_afirmacao_provisoria, afirmacao)
+    veredito = await asyncio.to_thread(verificar_afirmacao, afirmacao)
     texto = formatar_veredito(veredito)
     await message.reply_text(
         texto,
@@ -233,7 +196,7 @@ async def checar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     afirmacao = scrub(afirmacao)
-    veredito = await asyncio.to_thread(verificar_afirmacao_provisoria, afirmacao)
+    veredito = await asyncio.to_thread(verificar_afirmacao, afirmacao)
     texto = formatar_veredito(veredito)
     await update.message.reply_text(
         texto,
