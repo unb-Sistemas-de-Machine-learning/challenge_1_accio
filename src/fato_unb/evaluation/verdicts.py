@@ -18,6 +18,7 @@ from fato_unb.evaluation.dataset import (
 )
 from fato_unb.ingestion.models import RawDocument
 from fato_unb.llm.checker import FactChecker
+from fato_unb.llm.precos import PRECOS  # noqa: F401  (reexportado: a tabela mora em llm/precos.py)
 from fato_unb.llm.prompts import neutralizar
 from fato_unb.rag.models import VereditoType
 from fato_unb.rag.retriever import Evidencia
@@ -28,19 +29,6 @@ CONFIRMADO = VereditoType.CONFIRMADO_OFICIALMENTE.value
 INCONCLUSIVO = VereditoType.INCONCLUSIVO.value
 FALHA_INFRA = "llm_indisponivel"  # o provedor falhou: o resultado não diz nada sobre o modelo
 
-# US$ por 1M de tokens (entrada, saída); conferido em 2026-09 nas páginas de preço dos provedores.
-PRECOS = {
-    "gemini-3.1-flash-lite": (0.25, 1.50),
-    "gemini-3.5-flash-lite": (0.30, 2.50),
-    "gemini-3.6-flash": (0.75, 3.75),
-    "claude-haiku-4-5": (1.00, 5.00),
-    "claude-sonnet-5-5": (2.00, 10.00),
-    # DeepSeek-V4.1-Flash, conferido em 2026-10 na página oficial de preços. Valor de HORÁRIO DE PICO (teto):
-    # fora do pico (seg-sex fora de 01-04h e 06-10h UTC, e fins de semana) cai pela metade (0,15 / 0,60). O token
-    # de entrada em cache custa 0,006 (pico), mas esta tabela cobra tudo como "cache miss", então é um teto.
-    "deepseek-flash": (0.30, 1.20),
-    "deepseek-chat": (0.30, 1.20),  # apelido que a API resolve para o deepseek-flash
-}
 
 
 @dataclass

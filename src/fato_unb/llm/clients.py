@@ -55,6 +55,9 @@ class LLMResposta:
     texto: str
     tokens_entrada: int | None = None
     tokens_saida: int | None = None
+    modelo_real: str | None = None  # o que o provedor diz ter respondido (pode diferir de um apelido pedido)
+    tokens_cache: int | None = None  # parte de tokens_entrada servida do cache do provedor
+    fingerprint: str | None = None
 
 
 class LLMClient(Protocol):
@@ -192,6 +195,9 @@ class DeepSeekClient:
             texto=texto,
             tokens_entrada=usage.get("prompt_tokens"),
             tokens_saida=usage.get("completion_tokens"),
+            modelo_real=dados.get("model"),
+            tokens_cache=usage.get("prompt_cache_hit_tokens"),
+            fingerprint=dados.get("system_fingerprint"),
         )
 
 

@@ -49,6 +49,15 @@ def imprimir(r, bruto: bool, dry_run: bool) -> None:
     if r.usou_llm:
         lat = f"{r.latencia_llm_ms:.0f} ms" if r.latencia_llm_ms is not None else "n/d"
         print(f"Modelo: {r.modelo} | tokens: {r.tokens_entrada} entrada / {r.tokens_saida} saída | {lat}")
+        if r.modelo_real and r.modelo_real != r.modelo.split(":")[-1]:
+            print(f"Modelo que respondeu: {r.modelo_real}")
+        partes = [
+            f"busca {r.latencia_busca_ms:.0f} ms" if r.latencia_busca_ms is not None else None,
+            f"total {r.latencia_total_ms:.0f} ms" if r.latencia_total_ms is not None else None,
+            f"cache {r.tokens_cache} tokens" if r.tokens_cache else None,
+            f"custo US$ {r.custo_usd:.6f}" if r.custo_usd is not None else None,
+        ]
+        print("LLMOps: " + " | ".join(p for p in partes if p))
     if dry_run and r.prompt_usuario:
         from fato_unb.llm.prompts import SYSTEM_PROMPT
 

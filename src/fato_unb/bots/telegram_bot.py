@@ -17,6 +17,7 @@ from telegram.ext import (
 )
 from telegram.helpers import escape_markdown
 
+from fato_unb import observability
 from fato_unb.bots.privacy import FiltroPII, scrub
 from fato_unb.ingestion.scheduler import pipeline_job
 from fato_unb.llm.checker import FactChecker
@@ -289,6 +290,11 @@ async def checar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+async def encerrar_observabilidade(app: Application) -> None:
+    """Envia ao Langfuse os traces que ainda estão na fila antes do processo sair."""
+    observability.encerrar()
+
+
 async def tratar_erro(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error("Erro ao processar um update", exc_info=context.error)
 
@@ -298,7 +304,7 @@ def main() -> None:
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN não foi declarado ou está expirado")
 
-    app = Application.builder().token(token).build()
+    app = Application.builder().token(token).post_shutdown(encerrar_observabilidade).build()
 
     apenas_mensagens_novas = filters.UpdateType.MESSAGE
 
