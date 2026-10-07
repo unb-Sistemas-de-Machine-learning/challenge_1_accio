@@ -18,10 +18,14 @@ from telegram.ext import (
 from telegram.helpers import escape_markdown
 
 from fato_unb.bots.privacy import FiltroPII, scrub
+from fato_unb.ingestion.scheduler import pipeline_job
 from fato_unb.llm.checker import FactChecker
 from fato_unb.llm.clients import LLMError, criar_cliente
 from fato_unb.llm.guardrails import GuardrailConfig
+from fato_unb.rag.embeddings import EmbeddingService
 from fato_unb.rag.models import FonteCitada, VereditoJSON, VereditoType
+from fato_unb.rag.pipeline import IndexingPipeline
+from fato_unb.rag.reranker import Reranker
 from fato_unb.rag.retriever import Retriever
 
 load_dotenv()
@@ -64,19 +68,46 @@ TITULO_VEREDITO = {
 }
 
 CONFIG_BOT = GuardrailConfig(max_chars_justificativa=280)
+INTERVALO_INGESTAO_MIN = int(os.getenv("INGESTAO_INTERVALO_MIN", "60"))
 
+_embedder: EmbeddingService | None = None
 _fact_checker: FactChecker | None = None
 
 _LIMITE_CACHE_FONTES = 200
 _fontes_por_token: "OrderedDict[str, list[FonteCitada]]" = OrderedDict()
 
 
+def obter_embedder() -> EmbeddingService:
+    """Instância única de embedding, compartilhada entre o checar e a reindexação periódica.
+
+    Criar uma por chamada carregaria o modelo (2+ GB) em dobro na memória.
+    """
+    global _embedder
+    if _embedder is None:
+        _embedder = EmbeddingService(provider="local")
+    return _embedder
+
+
 def obter_fact_checker() -> FactChecker:
     global _fact_checker
     if _fact_checker is None:
         llm = criar_cliente()
-        _fact_checker = FactChecker(Retriever.from_env(), llm, config=CONFIG_BOT)
+        reranker_model = os.getenv("RERANKER_MODEL")
+        retriever = Retriever(
+            embedder=obter_embedder(),
+            reranker=Reranker(model_name=reranker_model) if reranker_model else None,
+        )
+        _fact_checker = FactChecker(retriever, llm, config=CONFIG_BOT)
     return _fact_checker
+
+
+async def ingestao_periodica(context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        pipeline = IndexingPipeline(embedder=obter_embedder())
+        relatorio = await pipeline_job(pipeline=pipeline)
+        logger.info("Ingestão periódica concluída: %s", relatorio)
+    except Exception:
+        logger.exception("Falha na ingestão periódica")
 
 
 def guardar_fontes(fontes: list[FonteCitada]) -> str:
@@ -280,6 +311,17 @@ def main() -> None:
     )
     app.add_handler(CallbackQueryHandler(mostrar_fontes, pattern=r"^fontes:"))
     app.add_error_handler(tratar_erro)
+
+    if app.job_queue is not None:
+        app.job_queue.run_repeating(
+            ingestao_periodica,
+            interval=INTERVALO_INGESTAO_MIN * 60,
+            first=60,
+            name="ingestao_periodica",
+        )
+        logger.info("Ingestão periódica agendada a cada %d minuto(s).", INTERVALO_INGESTAO_MIN)
+    else:
+        logger.warning("JobQueue indisponível; ingestão periódica desativada.")
 
     logger.info("Bot iniciado. Ctrl+C para parar.")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
