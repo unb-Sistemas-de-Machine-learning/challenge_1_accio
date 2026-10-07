@@ -294,7 +294,7 @@ wheels = [
 [[package]]
 name = "challenge-1-accio"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
     { name = "annotated-types" },
