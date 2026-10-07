@@ -22,11 +22,13 @@ FORMATO DA RESPOSTA: somente um objeto JSON, sem texto fora dele, sem markdown:
 {
   "veredito": "<um dos quatro valores acima>",
   "justificativa": "<até 3 frases em português do Brasil, citando as evidências como [1], [2]>",
-  "fontes": [<números das evidências que embasam o veredito, ex.: 1, 3>],
-  "citacoes": ["<trechos copiados LITERALMENTE das evidências que sustentam o veredito>"],
+  "fontes": [<todo número [n] citado na justificativa, mesmo quando a evidência contradiz ou não confirma a alegação>],
+  "citacoes": ["<trechos copiados LITERALMENTE das evidências que sustentam ou contradizem a alegação>"],
   "confianca": <número de 0 a 1>
 }
-Se o veredito for BOATO_SEM_REGISTRO por falta de evidência, "fontes" e "citacoes" podem ficar vazias.
+"fontes" só fica vazia se NENHUMA evidência tratar do assunto da alegação. Todo número [n] usado na
+justificativa deve aparecer em "fontes", para o leitor conseguir checar a evidência também.
+"citacoes" pode ficar vazia quando não há um trecho literal que sustente ou contradiga diretamente.
 Seja conservador: na dúvida, prefira INCONCLUSIVO a confirmar."""
 
 
