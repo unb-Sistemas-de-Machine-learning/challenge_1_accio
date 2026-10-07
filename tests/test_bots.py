@@ -7,9 +7,9 @@ from fato_unb.bots.telegram_bot import (
     entidades_mencao_ao_bot,
     extrair_afirmacao,
     formatar_veredito,
-    montar_veredito_provisorio,
     remover_mencoes,
 )
+from fato_unb.rag.models import VereditoJSON, VereditoType
 
 
 @pytest.mark.parametrize(
@@ -120,52 +120,14 @@ def test_remover_mencoes_sobra_o_resto_do_texto():
     assert remover_mencoes(texto, entidades) == "O RU vai fechar em outubro?"
 
 
-def _fake_ponto(score, title="Notícia Teste", url="https://noticias.unb.br/teste", source="UnB Notícias"):
-    return SimpleNamespace(score=score, payload={"title": title, "url": url, "source": source})
-
-
-def test_montar_veredito_sem_pontos_relevantes():
-    veredito = montar_veredito_provisorio("O RU vai fechar em outubro?", [])
-
-    assert veredito.afirmacao_analisada == "O RU vai fechar em outubro?"
-    assert veredito.fontes == []
-    assert veredito.confianca == 0.0
-
-
-def test_montar_veredito_ignora_pontos_abaixo_do_limiar():
-    pontos = [_fake_ponto(score=0.1)]
-    veredito = montar_veredito_provisorio("teste", pontos)
-
-    assert veredito.fontes == []
-    assert veredito.confianca == 0.1
-
-
-def test_montar_veredito_inclui_fontes_relevantes():
-    pontos = [_fake_ponto(score=0.75, title="RU tem funcionamento normal")]
-    veredito = montar_veredito_provisorio("O RU vai fechar?", pontos)
-
-    assert len(veredito.fontes) == 1
-    assert veredito.fontes[0].title == "RU tem funcionamento normal"
-    assert veredito.confianca == 0.75
-
-
-def test_montar_veredito_remove_fontes_duplicadas_pela_url():
-    pontos = [
-        _fake_ponto(score=0.8, title="Notícia X", url="https://noticias.unb.br/x"),
-        _fake_ponto(score=0.7, title="Notícia X", url="https://noticias.unb.br/x"),
-        _fake_ponto(score=0.6, title="Notícia Y", url="https://noticias.unb.br/y"),
-    ]
-    veredito = montar_veredito_provisorio("teste", pontos)
-
-    assert len(veredito.fontes) == 2
-    assert {str(f.url) for f in veredito.fontes} == {
-        "https://noticias.unb.br/x",
-        "https://noticias.unb.br/y",
-    }
-
-
 def test_formatar_veredito_escapa_markdown():
-    veredito = montar_veredito_provisorio("teste.", [])
+    veredito = VereditoJSON(
+        veredito=VereditoType.INCONCLUSIVO,
+        justificativa="teste.",
+        fontes=[],
+        confianca=0.0,
+        afirmacao_analisada="teste.",
+    )
     texto = formatar_veredito(veredito)
 
     assert "\\." in texto
