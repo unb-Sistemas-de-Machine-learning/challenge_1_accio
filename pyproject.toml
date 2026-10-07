@@ -72,7 +72,7 @@ evaluation = [
     "langchain-openai>=1.6.0",
     "loguru==0.7.3",
     "pandas>=3.0.5",
-    "ragas>=0.2.0",
+    "ragas==0.4.3",
     "rapidfuzz>=3.14.6",
 ]
 
