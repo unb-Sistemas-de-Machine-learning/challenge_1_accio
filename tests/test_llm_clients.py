@@ -23,7 +23,7 @@ def test_criar_cliente_deepseek(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-teste")
     monkeypatch.delenv("LLM_MODEL", raising=False)
     cliente = criar_cliente(provider="deepseek")
-    assert cliente.nome == "deepseek:deepseek-chat"
+    assert cliente.nome == "deepseek:deepseek-flash"
 
 
 def test_deepseek_gerar(monkeypatch):

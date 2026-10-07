@@ -14,7 +14,9 @@ DEFAULT_PROVIDER = "gemini"
 DEFAULT_MODELS = {
     "gemini": "gemini-3.1-flash-lite",  # o 2.5-flash-lite responde 404 para contas novas
     "anthropic": "claude-haiku-4-5",
-    "deepseek": "deepseek-chat",  # modelo barato, sem raciocínio; confira o nome atual na doc do DeepSeek
+    # Nome que a API lista em GET /models (DeepSeek-V4.1-Flash). "deepseek-chat" ainda é aceito, mas é um
+    # apelido que a API resolve para este modelo e não aparece na listagem: pode ser aposentado.
+    "deepseek": "deepseek-flash",
 }
 MAX_OUTPUT_TOKENS = 800  # o veredito é um JSON curto; limita custo e respostas divagantes
 TIMEOUT_SECONDS = 30
