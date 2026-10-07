@@ -160,6 +160,10 @@ class DeepSeekClient:
             raise LLMError("Chave do DeepSeek ausente: defina DEEPSEEK_API_KEY (https://platform.deepseek.com/api_keys).")
         self.model = model or DEFAULT_MODELS["deepseek"]
         self.nome = f"deepseek:{self.model}"
+        # O deepseek-flash raciocina por padrão: medido na mesma pergunta, 650-800 tokens de saída e ~3,5 s, contra
+        # ~105 tokens e ~1 s sem raciocínio, e o raciocínio pode consumir todo o max_tokens e deixar a resposta vazia.
+        # O veredito é um JSON curto sobre evidências já dadas, então o padrão é desligar (DEEPSEEK_THINKING=enabled liga).
+        self.raciocinio = os.getenv("DEEPSEEK_THINKING", "disabled").strip().lower() == "enabled"
 
     def gerar(self, system: str, user: str) -> LLMResposta:
         import requests
@@ -174,6 +178,7 @@ class DeepSeekClient:
                     "response_format": {"type": "json_object"},  # exige a palavra "JSON" no prompt (já tem)
                     "temperature": 0.0,
                     "max_tokens": MAX_OUTPUT_TOKENS,
+                    "thinking": {"type": "enabled" if self.raciocinio else "disabled"},
                 },
                 timeout=TIMEOUT_SECONDS,
             )

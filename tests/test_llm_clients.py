@@ -46,6 +46,23 @@ def test_deepseek_gerar(monkeypatch):
     assert capturado["headers"]["Authorization"] == "Bearer sk-teste"
     assert capturado["json"]["response_format"] == {"type": "json_object"}
     assert capturado["json"]["messages"][0] == {"role": "system", "content": "sistema JSON"}
+    # o deepseek-flash raciocina por padrão (caro, lento e pode estourar o max_tokens): o cliente desliga
+    assert capturado["json"]["thinking"] == {"type": "disabled"}
+
+
+def test_deepseek_raciocinio_pode_ser_ligado_por_variavel(monkeypatch):
+    import requests
+
+    capturado = {}
+
+    def falso_post(url, headers, json, timeout):
+        capturado.update(json=json)
+        return _Resposta(corpo={"choices": [{"message": {"content": "{}"}}]})
+
+    monkeypatch.setattr(requests, "post", falso_post)
+    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
+    DeepSeekClient(api_key="sk-teste").gerar("s", "u")
+    assert capturado["json"]["thinking"] == {"type": "enabled"}
 
 
 def test_deepseek_saldo_insuficiente(monkeypatch):
