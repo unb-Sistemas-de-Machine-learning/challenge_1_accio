@@ -2,6 +2,8 @@ import os
 
 from fastembed.rerank.cross_encoder import TextCrossEncoder
 
+from fato_unb.rag.model_cache import carregar_modelo
+
 DEFAULT_RERANKER_MODEL = "jinaai/jina-reranker-v2-base-multilingual"
 
 
@@ -23,7 +25,7 @@ class Reranker:
         self.model_name = model_name or os.getenv("RERANKER_MODEL") or DEFAULT_RERANKER_MODEL
         self._model: TextCrossEncoder | None = None
         if provider == "local":
-            self._model = TextCrossEncoder(model_name=self.model_name)
+            self._model = carregar_modelo(lambda: TextCrossEncoder(model_name=self.model_name))
 
     def score(self, query: str, texts: list[str]) -> list[float]:
         if not texts:

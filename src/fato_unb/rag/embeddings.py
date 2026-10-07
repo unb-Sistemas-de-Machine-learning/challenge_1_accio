@@ -3,6 +3,8 @@ from functools import cache
 
 from fastembed import SparseTextEmbedding, TextEmbedding
 
+from fato_unb.rag.model_cache import carregar_modelo
+
 # Modelo padrão: no dataset de 95 casos o e5-large elevou o R@1 de 0,761 para 0,943 sobre o MiniLM
 # (ver docs/modulos/avaliacao). Custa ~3,7x mais por consulta e 2,2 GB de memória.
 DEFAULT_DENSE_MODEL = "intfloat/multilingual-e5-large"
@@ -68,8 +70,10 @@ class EmbeddingService:
             )
         if self.provider == "local":
             model_dimension(self.model_name)  # falha cedo se o modelo não existir no catálogo
-            self._model = TextEmbedding(model_name=self.model_name)
-            self._sparse_model = SparseTextEmbedding(model_name=self.sparse_model_name)
+            self._model = carregar_modelo(lambda: TextEmbedding(model_name=self.model_name))
+            self._sparse_model = carregar_modelo(
+                lambda: SparseTextEmbedding(model_name=self.sparse_model_name)
+            )
 
     @property
     def vector_dimension(self) -> int:
