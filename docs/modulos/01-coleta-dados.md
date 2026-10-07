@@ -1,28 +1,42 @@
 # Coleta de Dados
 
-A coleta de dados é a base do sistema de verificação de informações da UnB. Ela envolve a busca por conteúdos oficiais que possam servir como evidência para respostas confiáveis.
+**Responsável:** Pedro Henrique Inacio dos Santos · **Código:** `src/fato_unb/ingestion/`
 
-## Fontes de informação
+O bot só consegue confirmar ou desmentir o que foi coletado. Se um comunicado não entrou na base, o veredito tende a ser "sem registro".
 
-As fontes principais incluem:
+## Fontes
 
-- ...
+O crawler (`crawler.py`) parte destas páginas e só segue links dos mesmos domínios:
 
-## Estratégia
+| Domínio | O que é |
+|---|---|
+| `noticias.unb.br` | UnB Notícias (HTML e RSS) |
+| `dpg.unb.br` | Decanato de Pós-Graduação |
+| `saa.unb.br` | Secretaria de Administração Acadêmica (calendários, HTML e PDF) |
+| `deg.unb.br` | Decanato de Graduação |
+| `adunb.org` | ADUnB (sindical, não é fonte oficial da UnB) |
 
-- WEB Scraping de páginas HTML.
-- Extração de documentos em PDF.
-- (organização dos dados / metadados?)...
+## Como coleta
 
-## Processo
+- **Crawler:** visita as páginas em lotes de 5, com pausa de 3 s entre os lotes, e ignora URLs já salvas. Descarta documentos publicados antes de **01/01/2026** e páginas com 50 palavras ou menos.
+- **HTML (`html.py`):** extrai o texto principal com `trafilatura`. A data vem da meta tag `article:published_time`, da tag `<time>` ou da própria URL.
+- **PDF (`pdf.py`):** extrai o texto de cada página com PyMuPDF. PDFs sem data são descartados.
+- **RSS (`rss.py`):** o feed só traz um resumo, então, para cada notícia nova, o texto completo é baixado da página.
 
-1. Escolha das URLs e domínios.
-2. ...
+## Documento coletado (`RawDocument`)
 
-## Benefícios
+| Campo | Observação |
+|---|---|
+| `doc_id` | SHA-256 da URL (a mesma URL sempre gera o mesmo ID) |
+| `title`, `content`, `url`, `source` | Título, texto, endereço e origem |
+| `source_type` | `html_page`, `pdf_document` ou `rss_news` |
+| `published_at` | Data de publicação |
+| `semester_ref` | Calculado da data: meses 1 a 7 → `AAAA.1`, meses 8 a 12 → `AAAA.2` |
 
-- (por que escolhemos?)
-- Atualização contínua das informações.
-- Garantia o uso de fontes confiáveis.
-- Melhor qualidade para uso no pipeline RAG.
-...
+## Agendamento
+
+`scheduler.py` roda a cada 1 hora: crawler → RSS → grava no staging → indexa no Qdrant. Cada documento novo também é anexado a `dados.txt` (141 documentos hoje), usado como corpus nos testes e na avaliação.
+
+## Limitação conhecida
+
+Se a página não informa a data, o código usa a **data da coleta** como data de publicação (`html.py`). Isso causou o único erro grave da avaliação (ver [Checagem com LLM](06-checagem-llm.md)).

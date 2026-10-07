@@ -1,4 +1,6 @@
-# Checagem com LLM e guardrails
+# ⚖️ Checagem com LLM e Guardrails (`fato_unb.llm`)
+
+**Responsável:** Yan Santos Rodrigues · **Épico:** `[RAG-ENGINE]`
 
 Código em `src/fato_unb/llm/`; uso em `scripts/checar.py`.
 
