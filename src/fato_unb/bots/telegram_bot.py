@@ -133,11 +133,17 @@ async def privacidade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await update.message.reply_text(TEXTO_PRIVACIDADE)
 
 
-def verificar_afirmacao(texto: str) -> VereditoJSON:
+def verificar_afirmacao_provisoria_com_contextos(
+    texto: str,
+    *,
+    raise_on_error: bool = False,
+) -> tuple[VereditoJSON, list[str]]:
     try:
         checker = obter_fact_checker()
     except LLMError:
         logger.exception("Não consegui criar o cliente de LLM")
+        if raise_on_error:
+            raise
         return VereditoJSON(
             veredito=VereditoType.INCONCLUSIVO,
             justificativa=(
@@ -147,10 +153,20 @@ def verificar_afirmacao(texto: str) -> VereditoJSON:
             fontes=[],
             confianca=0.0,
             afirmacao_analisada=texto,
-        )
+        ), []
 
     checagem = checker.verificar(texto)
-    return checagem.veredito
+    contextos = [
+        evidencia.contexto
+        for evidencia in checagem.evidencias
+        if evidencia.contexto.strip()
+    ]
+    return checagem.veredito, contextos
+
+
+def verificar_afirmacao(texto: str) -> VereditoJSON:
+    veredito, _ = verificar_afirmacao_provisoria_com_contextos(texto)
+    return veredito
 
 
 def formatar_veredito(veredito: VereditoJSON) -> str:

@@ -26,4 +26,11 @@ Disponibilizar as interfaces de chat para a comunidade universitária (Telegram 
 # Rodar testes de sanitização de PII e handlers
 uv run pytest tests/test_bots.py -v
 ```
+
+## 🚀 Como Executar o Bot do Telegram
+Configure `TELEGRAM_BOT_TOKEN` no ambiente e, na raiz do projeto, execute:
+
+```bash
+uv run python -m fato_unb.bots.telegram_bot
+```
 ---

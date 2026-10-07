@@ -1,6 +1,6 @@
 # Avaliação do RAG
 
-Só entram aqui números que já estão registrados em arquivos do repositório. As métricas estão explicadas em [Métricas e Benchmark](../05-metricas-benchmark.md).
+Esta página separa resultados de recuperação, avaliação do veredito e a execução preliminar de RAGAS. As métricas e os comandos estão em [Métricas e Benchmark](../05-metricas-benchmark.md).
 
 ## Busca
 
@@ -36,4 +36,16 @@ Gemini 3.1 Flash-Lite, índice e5, 81 casos rotulados (resultados completos em [
 
 ## Testset RAGAS
 
-O `ragas_testset_local.csv` (branch `feat/evaluation`) tem 10 perguntas, todas de um mesmo tipo (abstrata de múltiplas etapas), e algumas se repetem. As métricas do RAGAS ainda não foram calculadas.
+O `ragas_testset_local.csv` atualmente registrado tem **20 exemplos**: 10 rotulados `VERDADEIRO` e 10 `FALSO`; são 10 perguntas específicas de etapa única e 10 de múltiplas etapas. O script gerador solicita 30 exemplos, então a quantidade atual do CSV não deve ser tomada como o tamanho garantido de uma nova geração.
+
+Há **2 linhas avaliadas de 20** em `resultados_teste.csv`. O resumo salvo em `resultados_teste_resumo.json` apresenta:
+
+| Métrica | Média nas 2 linhas |
+|---|---:|
+| Faithfulness (`fidelidade_ao_contexto`) | 0,000 |
+| Context Recall (`cobertura_do_contexto`) | 0,550 |
+| Context Precision (`precisao_do_contexto`) | 0,708 |
+| Answer Correctness (`correcao_da_resposta`) | 0,476 |
+| Acurácia do veredito | 0,500 (1/2) |
+
+Essas notas são **preliminares**: duas observações não representam o desempenho do sistema e não permitem conclusões sobre as métricas. O CSV de resultados contém as respostas, fontes, contextos e notas dessas linhas; o resumo contém as médias. Para concluir a avaliação, é necessário processar o testset completo, revisar erros e confirmar que a execução terminou sem falhas por linha.

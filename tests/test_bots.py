@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from fato_unb.bots.privacy import scrub
+from fato_unb.llm.clients import LLMError
 from fato_unb.bots.telegram_bot import (
     entidades_mencao_ao_bot,
     extrair_afirmacao,
@@ -10,6 +11,7 @@ from fato_unb.bots.telegram_bot import (
     formatar_veredito,
     montar_teclado_fontes,
     remover_mencoes,
+    verificar_afirmacao_provisoria_com_contextos,
 )
 from fato_unb.rag.models import FonteCitada, VereditoJSON, VereditoType
 
@@ -122,18 +124,110 @@ def test_remover_mencoes_sobra_o_resto_do_texto():
     assert remover_mencoes(texto, entidades) == "O RU vai fechar em outubro?"
 
 
-def test_formatar_veredito_escapa_markdown():
-    veredito = VereditoJSON(
-        veredito=VereditoType.INCONCLUSIVO,
-        justificativa="teste.",
-        fontes=[],
-        confianca=0.0,
-        afirmacao_analisada="teste.",
+def _veredito_teste(
+    *,
+    veredito=VereditoType.INCONCLUSIVO,
+    justificativa="Justificativa de teste.",
+    fontes=None,
+):
+    return VereditoJSON(
+        veredito=veredito,
+        justificativa=justificativa,
+        fontes=fontes or [],
+        confianca=0.9,
+        afirmacao_analisada="Afirmação de teste.",
     )
-    texto = formatar_veredito(veredito)
+
+
+def test_verificar_afirmacao_retorna_contextos_do_fact_checker(monkeypatch):
+    veredito = _veredito_teste(
+        veredito=VereditoType.CONFIRMADO_OFICIALMENTE,
+        fontes=[
+            FonteCitada(
+                title="Notícia",
+                url="https://noticias.unb.br/x",
+                source="UnB Notícias",
+            )
+        ],
+    )
+    evidencias = [
+        SimpleNamespace(contexto="Contexto usado pelo verificador."),
+        SimpleNamespace(contexto="   "),
+    ]
+    checker = SimpleNamespace(
+        verificar=lambda texto: SimpleNamespace(
+            veredito=veredito,
+            evidencias=evidencias,
+        )
+    )
+    monkeypatch.setattr(
+        "fato_unb.bots.telegram_bot.obter_fact_checker",
+        lambda: checker,
+    )
+
+    actual_verdict, contexts = verificar_afirmacao_provisoria_com_contextos(
+        "Afirmação"
+    )
+
+    assert actual_verdict is veredito
+    assert contexts == ["Contexto usado pelo verificador."]
+
+
+def test_verificar_afirmacao_sem_cliente_llm_retorna_inconclusivo(monkeypatch):
+    def raise_missing_key():
+        raise LLMError("Chave ausente.")
+
+    monkeypatch.setattr(
+        "fato_unb.bots.telegram_bot.obter_fact_checker",
+        raise_missing_key,
+    )
+
+    verdict, contexts = verificar_afirmacao_provisoria_com_contextos("Afirmação")
+
+    assert verdict.veredito == VereditoType.INCONCLUSIVO
+    assert contexts == []
+
+
+def test_verificar_afirmacao_com_raise_on_error_propaga_falha_llm(monkeypatch):
+    error = LLMError("Chave ausente.")
+
+    def raise_error():
+        raise error
+
+    monkeypatch.setattr(
+        "fato_unb.bots.telegram_bot.obter_fact_checker",
+        raise_error,
+    )
+
+    with pytest.raises(LLMError) as exc_info:
+        verificar_afirmacao_provisoria_com_contextos(
+            "Afirmação",
+            raise_on_error=True,
+        )
+
+    assert exc_info.value is error
+
+
+def test_formatar_veredito_escapa_markdown():
+    texto = formatar_veredito(_veredito_teste(justificativa="teste."))
 
     assert "\\." in texto
     assert "Confiança:" in texto
+
+
+@pytest.mark.parametrize(
+    ("verdict_type", "emoji"),
+    [
+        (VereditoType.CONFIRMADO_OFICIALMENTE, "✅"),
+        (VereditoType.BOATO_SEM_REGISTRO, "❌"),
+        (VereditoType.DESATUALIZADO_OU_FORA_DE_CONTEXTO, "⚠️"),
+        (VereditoType.INCONCLUSIVO, "❓"),
+    ],
+)
+def test_formatar_veredito_suporta_todos_os_estados(verdict_type, emoji):
+    assert formatar_veredito(
+        _veredito_teste(veredito=verdict_type)
+    ).startswith(f"{emoji} ")
 
 
 def test_formatar_veredito_nao_inclui_fontes_no_corpo():
