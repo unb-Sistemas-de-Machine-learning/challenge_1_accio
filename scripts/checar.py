@@ -8,7 +8,7 @@
     uv run python scripts/checar.py "..." --json
 
 Provedor e modelo: LLM_PROVIDER / LLM_MODEL (padrão: gemini / gemini-3.1-flash-lite).
-Chaves: GEMINI_API_KEY ou ANTHROPIC_API_KEY.
+Chaves: GEMINI_API_KEY, ANTHROPIC_API_KEY ou DEEPSEEK_API_KEY.
 """
 
 import argparse
@@ -62,7 +62,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("alegacao", nargs="*")
     parser.add_argument("-i", "--interativo", action="store_true", help="pergunta alegações em loop")
-    parser.add_argument("--provider", choices=["gemini", "anthropic"])
+    parser.add_argument("--provider", choices=["gemini", "anthropic", "deepseek"])
     parser.add_argument("--modelo")
     parser.add_argument("--evidencias", type=int, default=GuardrailConfig.max_evidencias)
     parser.add_argument("--dry-run", action="store_true", help="não chama o LLM; mostra o prompt montado")
