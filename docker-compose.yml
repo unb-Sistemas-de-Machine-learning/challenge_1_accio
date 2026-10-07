@@ -1,0 +1,61 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.19.0
+    # Só o host enxerga a porta (dev local). Dentro da rede do compose o bot usa "qdrant:6333".
+    ports:
+      - "127.0.0.1:6333:6333"
+    volumes:
+      - ./qdrant_storage:/qdrant/storage
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-fato_unb}
+      POSTGRES_USER: ${POSTGRES_USER:-fato_user}
+      # Sem valor padrão de propósito: a senha vem do .env (veja .env.example).
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  bot:
+    build: .
+    env_file:
+      - .env
+    environment:
+      # Dentro do Docker os serviços se enxergam pelo nome, não por "localhost":
+      # isso sobrescreve o que estiver no .env só pra esses dois.
+      QDRANT_HOST: qdrant
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-fato_user}:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-fato_unb}
+      # Evita que o cache do modelo de embedding (2+ GB) vá para /tmp (às vezes é RAM) e
+      # dobre o uso de memória. Fica no volume persistente abaixo, sobrevive a reinícios.
+      FASTEMBED_CACHE_PATH: /root/.cache/fastembed
+    volumes:
+      - fastembed_cache:/root/.cache/fastembed
+      # URLs que o crawler já mapeou. Sem isso o arquivo nasce vazio a cada deploy e o
+      # agendador (que roda dentro do bot) re-crawleia tudo. O arquivo precisa existir no
+      # host antes do "up", senão o Docker cria um diretório no lugar (scripts/setup_vm.sh faz isso).
+      - ./dados.txt:/app/dados.txt
+    depends_on:
+      qdrant:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    # O disco da VM é pequeno: evita que os logs do container cresçam sem limite.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  fastembed_cache:

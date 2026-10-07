@@ -1,0 +1,37 @@
+{
+  "dataframe_sha256": "06afddf878ec534b79d2d8746fca75b81a62452842acddfa4591d46769da4418",
+  "mode": "bot",
+  "judge_model": "qwen2.5:3b",
+  "answer_model": null,
+  "metrics": [
+    "faithfulness",
+    "context_recall",
+    "context_precision",
+    "answer_correctness"
+  ],
+  "output_columns": [
+    "indice_linha_testset",
+    "pergunta",
+    "contextos_de_referencia",
+    "resposta_de_referencia",
+    "nome_da_persona",
+    "estilo_da_pergunta",
+    "comprimento_da_pergunta",
+    "tipo_de_sintetizador",
+    "identificador_tecnico_do_sintetizador",
+    "personas_geradas_na_execucao",
+    "fontes_dos_contextos_de_referencia",
+    "afirmacao",
+    "VEREDITO",
+    "resposta_do_bot",
+    "veredito_esperado",
+    "veredito_do_bot",
+    "acerto_do_veredito",
+    "fontes_citadas",
+    "contextos_recuperados",
+    "fidelidade_ao_contexto",
+    "cobertura_do_contexto",
+    "precisao_do_contexto",
+    "correcao_da_resposta"
+  ]
+}
