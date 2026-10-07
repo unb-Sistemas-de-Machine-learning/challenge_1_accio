@@ -4,12 +4,15 @@ import aiohttp
 import re
 import os
 import json
+from pathlib import Path
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 from typing import Set, List, Optional, TYPE_CHECKING
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from .models import RawDocument, SourceType
 from .html import parse_html_content
+from .pdf import PDFExtraction, extract_pdf_text
 
 if TYPE_CHECKING:
     from fato_unb.storage.repository import StagingRepository
@@ -18,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 DOMAINS = [
     "noticias.unb.br",
+    "saa.unb.br",
     "deg.unb.br",
     "dpg.unb.br",
     "adunb.org"
@@ -29,6 +33,8 @@ START_URLS = [
     "https://noticias.unb.br/ensino",
     "https://noticias.unb.br/informes",
     "https://noticias.unb.br/pesquisas-estudos-e-projetos",
+    "https://saa.unb.br/calendario-academico-graduacao/",
+    "https://saa.unb.br/calendario-academico-2/",
     "https://deg.unb.br/noticias/",
     "https://dpg.unb.br/category/noticias/"
 ]
@@ -39,6 +45,8 @@ ALLOWED_LISTING_PATHS = [
     '/ensino',
     '/informes',
     '/pesquisas-estudos-e-projetos',
+    '/calendario-academico-graduacao',
+    '/calendario-academico-2',
     '/noticias',
     '/category/noticias'
 ]
@@ -95,6 +103,10 @@ def load_saved_documents(filepath: Optional[str]) -> List[RawDocument]:
     return docs
 
 
+def is_pdf_url(url: str) -> bool:
+    return urlparse(url).path.lower().endswith(".pdf")
+
+
 def is_valid_url(url: str) -> bool:
     try:
         parsed = urlparse(url)
@@ -102,6 +114,8 @@ def is_valid_url(url: str) -> bool:
         if netloc not in DOMAINS or parsed.scheme not in ["http", "https"]:
             return False
         path = parsed.path.lower()
+        if path.endswith(".pdf"):
+            return True
         if any(path.startswith(allowed) for allowed in ALLOWED_LISTING_PATHS):
             return True
         if any(pattern.search(path) for pattern in ARTICLE_PATTERNS):
@@ -109,6 +123,25 @@ def is_valid_url(url: str) -> bool:
         return False
     except Exception:
         return False
+
+
+def _parse_http_date(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        parsed = parsedate_to_datetime(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _pdf_title(extraction: PDFExtraction, url: str) -> str:
+    if extraction.title and extraction.title.strip():
+        return extraction.title.strip()
+    filename = Path(unquote(urlparse(url).path)).stem
+    return re.sub(r"[_-]+", " ", filename).strip() or "Documento PDF da UnB"
 
 def check_is_article(url: str) -> bool:
     parsed_path = urlparse(url).path.lower()
@@ -132,11 +165,28 @@ async def fetch_and_parse(session: aiohttp.ClientSession, url: str) -> tuple:
         async with session.get(url, timeout=15) as response:
             if response.status == 200:
                 content_type = response.headers.get('Content-Type', '')
-                if 'application/pdf' in content_type:
-                    return url, "PDF_DOCUMENT", [], "", None
+                if 'application/pdf' in content_type or is_pdf_url(url):
+                    pdf_bytes = await response.read()
+                    extraction = await asyncio.to_thread(extract_pdf_text, pdf_bytes)
+                    published_at = (
+                        _parse_http_date(response.headers.get("Last-Modified"))
+                        or extraction.created_at
+                    )
+                    if published_at is None:
+                        logger.warning(
+                            "PDF sem data de publicação nos cabeçalhos ou metadados; ignorando: %s",
+                            url,
+                        )
+                    return (
+                        url,
+                        extraction.full_text.strip(),
+                        [],
+                        _pdf_title(extraction, url),
+                        published_at,
+                    )
                 if not content_type.startswith('text/html'):
                     return url, None, [], "", None
-                    
+
                 html = await response.text()
                 parsed = parse_html_content(html, url)
                 links = extract_links(html, url)
@@ -185,7 +235,7 @@ async def run_crawler(
             for url in batch:
                 if url not in visited:
                     visited.add(url)
-                    if check_is_article(url) and url in known_urls:
+                    if (check_is_article(url) or is_pdf_url(url)) and url in known_urls:
                         continue
                     tasks.append(fetch_and_parse(session, url))
             
@@ -194,9 +244,11 @@ async def run_crawler(
                 
                 batch_docs: List[RawDocument] = []
                 for url, text, links, title, published_at in results:
-                    is_article = check_is_article(url)
-                    
-                    if text and text != "PDF_DOCUMENT" and len(text.split()) > 50 and is_article:
+                    is_pdf = is_pdf_url(url)
+                    is_candidate = is_pdf or check_is_article(url)
+                    min_words = 1 if is_pdf else 50
+
+                    if text and len(text.split()) > min_words and is_candidate:
                         if url not in known_urls:
                             if published_at and published_at >= CUTOFF_DATE:
                                 doc = RawDocument(
@@ -204,7 +256,7 @@ async def run_crawler(
                                     content=text,
                                     url=url,
                                     source=urlparse(url).netloc,
-                                    source_type=SourceType.HTML_PAGE,
+                                    source_type=SourceType.PDF_DOCUMENT if is_pdf else SourceType.HTML_PAGE,
                                     published_at=published_at
                                 )
                                 batch_docs.append(doc)
