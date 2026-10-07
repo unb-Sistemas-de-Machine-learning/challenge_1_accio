@@ -14,6 +14,7 @@ DEFAULT_PROVIDER = "gemini"
 DEFAULT_MODELS = {
     "gemini": "gemini-3.1-flash-lite",  # o 2.5-flash-lite responde 404 para contas novas
     "anthropic": "claude-haiku-4-5",
+    "deepseek": "deepseek-chat",  # modelo barato, sem raciocínio; confira o nome atual na doc do DeepSeek
 }
 MAX_OUTPUT_TOKENS = 800  # o veredito é um JSON curto; limita custo e respostas divagantes
 TIMEOUT_SECONDS = 30
@@ -141,6 +142,57 @@ class AnthropicClient:
         )
 
 
+class DeepSeekClient:
+    """DeepSeek via API compatível com a da OpenAI. A chave vem de DEEPSEEK_API_KEY.
+
+    Usa `requests` (já é dependência) em vez do SDK da OpenAI, para não mexer no uv.lock."""
+
+    URL = "https://api.deepseek.com/chat/completions"
+
+    def __init__(self, model: str | None = None, api_key: str | None = None):
+        self._key = api_key or os.getenv("DEEPSEEK_API_KEY")
+        if not self._key:
+            raise LLMError("Chave do DeepSeek ausente: defina DEEPSEEK_API_KEY (https://platform.deepseek.com/api_keys).")
+        self.model = model or DEFAULT_MODELS["deepseek"]
+        self.nome = f"deepseek:{self.model}"
+
+    def gerar(self, system: str, user: str) -> LLMResposta:
+        import requests
+
+        try:
+            resp = requests.post(
+                self.URL,
+                headers={"Authorization": f"Bearer {self._key}"},
+                json={
+                    "model": self.model,
+                    "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+                    "response_format": {"type": "json_object"},  # exige a palavra "JSON" no prompt (já tem)
+                    "temperature": 0.0,
+                    "max_tokens": MAX_OUTPUT_TOKENS,
+                },
+                timeout=TIMEOUT_SECONDS,
+            )
+        except requests.RequestException as exc:
+            raise LLMError(f"DeepSeek falhou: {exc}", transitorio=_transitorio(exc)) from exc
+        if resp.status_code == 402:
+            raise LLMError("DeepSeek: saldo insuficiente (402). Recarregue em https://platform.deepseek.com.")
+        if resp.status_code != 200:
+            raise LLMError(
+                f"DeepSeek falhou ({resp.status_code}): {resp.text[:200]}",
+                transitorio=resp.status_code in _CODIGOS_TRANSITORIOS,
+            )
+        dados = resp.json()
+        texto = (dados.get("choices") or [{}])[0].get("message", {}).get("content") or ""
+        if not texto:
+            raise LLMError("DeepSeek devolveu resposta vazia.")
+        usage = dados.get("usage") or {}
+        return LLMResposta(
+            texto=texto,
+            tokens_entrada=usage.get("prompt_tokens"),
+            tokens_saida=usage.get("completion_tokens"),
+        )
+
+
 class ComLimiteDeTaxa:
     """Envolve um cliente e espaça as chamadas para não passar de `rpm` requisições por minuto.
 
@@ -180,8 +232,10 @@ def criar_cliente(
         cliente: LLMClient = GeminiClient(model=model)
     elif provider == "anthropic":
         cliente = AnthropicClient(model=model)
+    elif provider == "deepseek":
+        cliente = DeepSeekClient(model=model)
     else:
-        raise LLMError(f"Provedor '{provider}' não suportado. Use 'gemini' ou 'anthropic'.")
+        raise LLMError(f"Provedor '{provider}' não suportado. Use 'gemini', 'anthropic' ou 'deepseek'.")
     return ComLimiteDeTaxa(cliente, rpm) if rpm else cliente
 
 
