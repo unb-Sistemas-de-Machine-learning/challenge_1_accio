@@ -9,6 +9,7 @@ from fato_unb.bots.telegram_bot import (
     formatar_veredito,
     montar_veredito_provisorio,
     remover_mencoes,
+    verificar_afirmacao_provisoria_com_contextos,
 )
 
 
@@ -120,8 +121,40 @@ def test_remover_mencoes_sobra_o_resto_do_texto():
     assert remover_mencoes(texto, entidades) == "O RU vai fechar em outubro?"
 
 
-def _fake_ponto(score, title="Notícia Teste", url="https://noticias.unb.br/teste", source="UnB Notícias"):
-    return SimpleNamespace(score=score, payload={"title": title, "url": url, "source": source})
+def _fake_ponto(
+    score,
+    title="Notícia Teste",
+    url="https://noticias.unb.br/teste",
+    source="UnB Notícias",
+    content="Conteúdo da fonte.",
+):
+    return SimpleNamespace(
+        score=score,
+        payload={
+            "title": title,
+            "url": url,
+            "source": source,
+            "content": content,
+        },
+    )
+
+
+def test_verificar_afirmacao_retorna_os_contextos_realmente_usados(monkeypatch):
+    pontos = [
+        _fake_ponto(score=0.8),
+        _fake_ponto(score=0.2, url="https://noticias.unb.br/irrelevante"),
+    ]
+    monkeypatch.setattr("fato_unb.bots.telegram_bot.obter_embedder", lambda: object())
+    monkeypatch.setattr(
+        "fato_unb.bots.telegram_bot.buscar",
+        lambda *args, **kwargs: SimpleNamespace(points=pontos),
+    )
+
+    veredito, contextos = verificar_afirmacao_provisoria_com_contextos("Afirmação")
+
+    assert veredito.veredito.value == "INCONCLUSIVO"
+    assert len(veredito.fontes) == 1
+    assert contextos == ["Conteúdo da fonte."]
 
 
 def test_montar_veredito_sem_pontos_relevantes():
@@ -170,3 +203,25 @@ def test_formatar_veredito_escapa_markdown():
 
     assert "\\." in texto
     assert "Confiança:" in texto
+
+
+@pytest.mark.parametrize(
+    ("veredito", "emoji"),
+    [
+        ("CONFIRMADO_OFICIALMENTE", "✅"),
+        ("BOATO_SEM_REGISTRO", "❌"),
+        ("DESATUALIZADO_OU_FORA_DE_CONTEXTO", "⚠️"),
+        ("INCONCLUSIVO", "❓"),
+    ],
+)
+def test_formatar_veredito_suporta_todos_os_estados(veredito, emoji):
+    from fato_unb.rag.models import VereditoJSON, VereditoType
+
+    resposta = VereditoJSON(
+        veredito=VereditoType(veredito),
+        justificativa="Justificativa.",
+        confianca=0.5,
+        afirmacao_analisada="Afirmação.",
+    )
+
+    assert formatar_veredito(resposta).startswith(f"{emoji} ")

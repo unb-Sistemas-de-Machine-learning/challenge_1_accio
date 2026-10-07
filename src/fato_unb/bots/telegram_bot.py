@@ -125,14 +125,33 @@ def montar_veredito_provisorio(texto: str, pontos) -> VereditoJSON:
     )
 
 
-def verificar_afirmacao_provisoria(texto: str) -> VereditoJSON:
+def verificar_afirmacao_provisoria_com_contextos(
+    texto: str,
+    *,
+    raise_on_error: bool = False,
+) -> tuple[VereditoJSON, list[str]]:
     try:
         resultado = buscar(texto, obter_embedder(), limit=3)
         pontos = resultado.points
     except Exception:
         logger.exception("Falha ao buscar fontes relacionadas no Qdrant")
+        if raise_on_error:
+            raise
         pontos = []
-    return montar_veredito_provisorio(texto, pontos)
+
+    contextos = [
+        ponto.payload["content"]
+        for ponto in pontos
+        if ponto.score >= SIMILARIDADE_MINIMA
+        and isinstance(ponto.payload.get("content"), str)
+        and ponto.payload["content"].strip()
+    ]
+    return montar_veredito_provisorio(texto, pontos), contextos
+
+
+def verificar_afirmacao_provisoria(texto: str) -> VereditoJSON:
+    veredito, _ = verificar_afirmacao_provisoria_com_contextos(texto)
+    return veredito
 
 
 def formatar_veredito(veredito: VereditoJSON) -> str:
