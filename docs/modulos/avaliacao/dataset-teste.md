@@ -2,6 +2,10 @@
 
 Arquivo: `src/fato_unb/evaluation/retrieval_dataset.jsonl` (95 casos, um JSON por linha).
 
+Este é o dataset de **recuperação**, usado por `scripts/avaliar.py`; não é o testset sintético
+`ragas_testset_local.csv`, usado para avaliar respostas com RAGAS. As duas avaliações têm conjuntos,
+objetivos e métricas diferentes.
+
 ## Objetivo
 
 Comparar configurações de chunking, embedding e reranking pela **qualidade da recuperação**:

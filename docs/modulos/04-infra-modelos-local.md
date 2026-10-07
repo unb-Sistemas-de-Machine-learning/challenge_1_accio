@@ -27,9 +27,14 @@ O projeto usa `uv` e Python ≥ 3.14.
 
 O `gemini-2.5-flash-lite` não foi usado porque responde 404 para contas novas (comentário em `.env.example`).
 
-## Geração de testset (branch `feat/evaluation`)
+## Avaliação com testset sintético
 
-O `generateTestset.py` do Matheus usa **Ollama** com modelos locais (`qwen2.5:7b`, `qwen2.5:3b` e `bge-m3`) e a biblioteca RAGAS para criar perguntas de teste a partir do corpus. Ainda não está integrado a esta branch.
+`src/fato_unb/evaluation/generateTestset.py` usa **Ollama** com modelos locais
+(`qwen2.5:7b`, `qwen2.5:3b` e `bge-m3`) e RAGAS para gerar perguntas e afirmações a partir
+de `dados.txt`. O avaliador está integrado em `src/fato_unb/evaluation/evaluator.py`.
+O arquivo de testset atualmente salvo tem 20 exemplos, embora o gerador solicite 30 em
+`testset_size`; as métricas RAGAS disponíveis e os resultados preliminares estão descritos em
+[Métricas e Benchmark](05-metricas-benchmark.md).
 
 ## Por que essa divisão
 

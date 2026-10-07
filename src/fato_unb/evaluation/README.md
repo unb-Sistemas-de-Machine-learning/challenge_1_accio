@@ -57,10 +57,9 @@ uv run python -m fato_unb.evaluation.benchmark
 
 O gerador salva o testset em `ragas_testset_local.csv` e acrescenta as colunas
 `afirmacao` e `VEREDITO`. A afirmação é criada pelo Qwen com base na pergunta
-gerada e nos contextos de referência. Para dividir os vereditos igualmente, o
-gerador cria 20 amostras: 10 recebem `VEREDITO=VERDADEIRO`, com afirmação
-sustentada pelos contextos, e 10 recebem `VEREDITO=FALSO`, com afirmação
-diretamente contradita por eles.
+gerada e nos contextos de referência. O código solicita 30 amostras e distribui
+os rótulos verdadeiros e falsos em quantidades tão iguais quanto possível.
+O CSV atualmente salvo contém 20 amostras: 10 `VERDADEIRO` e 10 `FALSO`.
 
 O avaliador lê `ragas_testset_local.csv` na raiz do projeto. O modo padrão
 continua gerando respostas locais para a coluna `pergunta`. Com `--bot`, usa a
@@ -104,14 +103,15 @@ O modo `--bot` salva as respostas, fontes e contextos, além das métricas de
 fidelidade ao contexto, cobertura e precisão dos contextos, correção da resposta
 e acurácia do veredito, em
 `resultados_avaliacao.csv`.
-Atualmente, a implementação provisória produz `INCONCLUSIVO`; assim, a
-acurácia do veredito mostra a diferença em relação ao rótulo do testset até que
-o classificador esteja ativo. O testset atual só rotula `VERDADEIRO` e `FALSO`,
-mapeados respectivamente para `CONFIRMADO_OFICIALMENTE` e
-`BOATO_SEM_REGISTRO` para calcular essa acurácia. Os dois rótulos não avaliam
-separadamente `DESATUALIZADO_OU_FORA_DE_CONTEXTO` e `INCONCLUSIVO`; quando o
-testset passar a conter essas categorias, elas serão comparadas diretamente
-com os quatro valores de `VereditoType`.
+O modo `--bot` chama o `FactChecker` usado pelo bot do Telegram; não é um
+verificador simulado que sempre retorna `INCONCLUSIVO`. Se não for possível
+criar o cliente de LLM, a interface do bot pode retornar `INCONCLUSIVO` para
+uso interativo. Na avaliação em lote, erros são propagados para o avaliador,
+registrados no log e a linha não é pontuada. O testset atual só rotula
+`VERDADEIRO` e `FALSO`, mapeados respectivamente para
+`CONFIRMADO_OFICIALMENTE` e `BOATO_SEM_REGISTRO` para calcular a acurácia do
+veredito. Esses rótulos não avaliam separadamente
+`DESATUALIZADO_OU_FORA_DE_CONTEXTO` e `INCONCLUSIVO`.
 
 Para avaliar uma resposta individual do bot antes de enviá-la, chame
 `avaliar_resposta_do_bot` passando a afirmação e os contextos recuperados:
@@ -146,8 +146,8 @@ As notas são gravadas por linha no CSV e suas médias no JSON de resumo. As
 prompts dessas métricas são configuradas para português.
 `answer_correctness` compara a resposta estruturada inteira, incluindo
 veredito e fontes, com uma referência que combina o rótulo esperado e a resposta
-factual. Interprete essa nota como diagnóstica enquanto o bot ainda retorna
-sempre `INCONCLUSIVO`.
+factual. Com o testset e os resultados atuais, interprete essa nota apenas como
+diagnóstica: somente duas linhas foram avaliadas até agora.
 
 No modo em lote, cada linha é avaliada isoladamente. Se a busca, geração ou
 qualquer métrica falhar para uma linha, ela é registrada no log e omitida do
