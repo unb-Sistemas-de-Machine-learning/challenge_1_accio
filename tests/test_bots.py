@@ -6,10 +6,12 @@ from fato_unb.bots.privacy import scrub
 from fato_unb.bots.telegram_bot import (
     entidades_mencao_ao_bot,
     extrair_afirmacao,
+    formatar_fontes,
     formatar_veredito,
+    montar_teclado_fontes,
     remover_mencoes,
 )
-from fato_unb.rag.models import VereditoJSON, VereditoType
+from fato_unb.rag.models import FonteCitada, VereditoJSON, VereditoType
 
 
 @pytest.mark.parametrize(
@@ -132,3 +134,57 @@ def test_formatar_veredito_escapa_markdown():
 
     assert "\\." in texto
     assert "Confiança:" in texto
+
+
+def test_formatar_veredito_nao_inclui_fontes_no_corpo():
+    veredito = VereditoJSON(
+        veredito=VereditoType.CONFIRMADO_OFICIALMENTE,
+        justificativa="teste",
+        fontes=[FonteCitada(title="Notícia", url="https://noticias.unb.br/x", source="UnB Notícias")],
+        confianca=0.9,
+        afirmacao_analisada="teste",
+    )
+    texto = formatar_veredito(veredito)
+
+    assert "Fontes" not in texto
+
+
+def test_formatar_fontes_lista_titulo_e_link():
+    fontes = [FonteCitada(title="Notícia X", url="https://noticias.unb.br/x", source="UnB Notícias")]
+    texto = formatar_fontes(fontes)
+
+    assert "Fontes" in texto
+    assert "Notícia X" in texto
+    assert "noticias.unb.br/x" in texto
+
+
+def test_montar_teclado_fontes_vazio_sem_fontes():
+    veredito = VereditoJSON(
+        veredito=VereditoType.INCONCLUSIVO,
+        justificativa="teste",
+        fontes=[],
+        confianca=0.0,
+        afirmacao_analisada="teste",
+    )
+
+    assert montar_teclado_fontes(veredito) is None
+
+
+def test_montar_teclado_fontes_cria_botao_com_contagem():
+    veredito = VereditoJSON(
+        veredito=VereditoType.CONFIRMADO_OFICIALMENTE,
+        justificativa="teste",
+        fontes=[
+            FonteCitada(title="A", url="https://noticias.unb.br/a", source="UnB Notícias"),
+            FonteCitada(title="B", url="https://noticias.unb.br/b", source="UnB Notícias"),
+        ],
+        confianca=0.9,
+        afirmacao_analisada="teste",
+    )
+
+    teclado = montar_teclado_fontes(veredito)
+
+    assert teclado is not None
+    botao = teclado.inline_keyboard[0][0]
+    assert "(2)" in botao.text
+    assert botao.callback_data.startswith("fontes:")

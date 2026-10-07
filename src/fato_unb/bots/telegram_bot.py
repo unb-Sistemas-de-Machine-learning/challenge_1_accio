@@ -1,17 +1,27 @@
 import asyncio
 import logging
 import os
+import secrets
+from collections import OrderedDict
 
 from dotenv import load_dotenv
-from telegram import LinkPreviewOptions, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions, Update
 from telegram.constants import ParseMode
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 from telegram.helpers import escape_markdown
 
 from fato_unb.bots.privacy import FiltroPII, scrub
 from fato_unb.llm.checker import FactChecker
 from fato_unb.llm.clients import LLMError, criar_cliente
-from fato_unb.rag.models import VereditoJSON, VereditoType
+from fato_unb.llm.guardrails import GuardrailConfig
+from fato_unb.rag.models import FonteCitada, VereditoJSON, VereditoType
 from fato_unb.rag.retriever import Retriever
 
 load_dotenv()
@@ -46,22 +56,35 @@ TEXTO_PRIVACIDADE = (
     "diretamente com /checar."
 )
 
-EMOJI_VEREDITO = {
-    VereditoType.CONFIRMADO_OFICIALMENTE: "✅",
-    VereditoType.BOATO_SEM_REGISTRO: "❌",
-    VereditoType.DESATUALIZADO_OU_FORA_DE_CONTEXTO: "⚠️",
-    VereditoType.INCONCLUSIVO: "❓",
+TITULO_VEREDITO = {
+    VereditoType.CONFIRMADO_OFICIALMENTE: ("✅", "Confirmado Oficialmente"),
+    VereditoType.BOATO_SEM_REGISTRO: ("❌", "É Boato"),
+    VereditoType.DESATUALIZADO_OU_FORA_DE_CONTEXTO: ("⚠️", "Desatualizado"),
+    VereditoType.INCONCLUSIVO: ("❓", "Sem Confirmação"),
 }
 
+CONFIG_BOT = GuardrailConfig(max_chars_justificativa=280)
+
 _fact_checker: FactChecker | None = None
+
+_LIMITE_CACHE_FONTES = 200
+_fontes_por_token: "OrderedDict[str, list[FonteCitada]]" = OrderedDict()
 
 
 def obter_fact_checker() -> FactChecker:
     global _fact_checker
     if _fact_checker is None:
         llm = criar_cliente()
-        _fact_checker = FactChecker(Retriever.from_env(), llm)
+        _fact_checker = FactChecker(Retriever.from_env(), llm, config=CONFIG_BOT)
     return _fact_checker
+
+
+def guardar_fontes(fontes: list[FonteCitada]) -> str:
+    token = secrets.token_hex(6)
+    _fontes_por_token[token] = fontes
+    while len(_fontes_por_token) > _LIMITE_CACHE_FONTES:
+        _fontes_por_token.popitem(last=False)
+    return token
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -99,8 +122,7 @@ def verificar_afirmacao(texto: str) -> VereditoJSON:
 
 
 def formatar_veredito(veredito: VereditoJSON) -> str:
-    emoji = EMOJI_VEREDITO[veredito.veredito]
-    rotulo = veredito.veredito.value.replace("_", " ").title()
+    emoji, rotulo = TITULO_VEREDITO[veredito.veredito]
 
     linhas = [
         f"{emoji} *{escape_markdown(rotulo, version=2)}*",
@@ -110,15 +132,25 @@ def formatar_veredito(veredito: VereditoJSON) -> str:
         f"Confiança: {escape_markdown(f'{veredito.confianca:.0%}', version=2)}",
     ]
 
-    if veredito.fontes:
-        linhas.append("")
-        linhas.append("*Fontes:*")
-        for fonte in veredito.fontes:
-            titulo = escape_markdown(fonte.title, version=2)
-            url = escape_markdown(str(fonte.url), version=2, entity_type="text_link")
-            linhas.append(f"• [{titulo}]({url})")
-
     return "\n".join(linhas)
+
+
+def formatar_fontes(fontes: list[FonteCitada]) -> str:
+    linhas = ["*Fontes:*"]
+    for fonte in fontes:
+        titulo = escape_markdown(fonte.title, version=2)
+        url = escape_markdown(str(fonte.url), version=2, entity_type="text_link")
+        linhas.append(f"• [{titulo}]({url})")
+    return "\n".join(linhas)
+
+
+def montar_teclado_fontes(veredito: VereditoJSON) -> InlineKeyboardMarkup | None:
+    if not veredito.fontes:
+        return None
+    token = guardar_fontes(veredito.fontes)
+    n = len(veredito.fontes)
+    rotulo = f"📎 Ver fonte{'s' if n != 1 else ''} ({n})"
+    return InlineKeyboardMarkup([[InlineKeyboardButton(rotulo, callback_data=f"fontes:{token}")]])
 
 
 def extrair_afirmacao(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
@@ -182,6 +214,26 @@ async def mencao(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         texto,
         parse_mode=ParseMode.MARKDOWN_V2,
         link_preview_options=LinkPreviewOptions(is_disabled=True),
+        reply_markup=montar_teclado_fontes(veredito),
+    )
+
+
+async def mostrar_fontes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    token = (query.data or "").removeprefix("fontes:")
+    fontes = _fontes_por_token.pop(token, None)
+
+    if fontes is None:
+        await query.answer("As fontes dessa checagem não estão mais disponíveis.", show_alert=True)
+        return
+
+    await query.answer()
+    texto_atual = query.message.text_markdown_v2 or query.message.text or ""
+    novo_texto = f"{texto_atual}\n\n{formatar_fontes(fontes)}"
+    await query.edit_message_text(
+        novo_texto,
+        parse_mode=ParseMode.MARKDOWN_V2,
+        link_preview_options=LinkPreviewOptions(is_disabled=True),
     )
 
 
@@ -202,6 +254,7 @@ async def checar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         texto,
         parse_mode=ParseMode.MARKDOWN_V2,
         link_preview_options=LinkPreviewOptions(is_disabled=True),
+        reply_markup=montar_teclado_fontes(veredito),
     )
 
 
@@ -225,6 +278,7 @@ def main() -> None:
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND & apenas_mensagens_novas, mencao)
     )
+    app.add_handler(CallbackQueryHandler(mostrar_fontes, pattern=r"^fontes:"))
     app.add_error_handler(tratar_erro)
 
     logger.info("Bot iniciado. Ctrl+C para parar.")
