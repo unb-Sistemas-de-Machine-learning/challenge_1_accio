@@ -1,10 +1,10 @@
 import pytest
 import hashlib
-from datetime import datetime, timezone
-from pydantic import ValidationError
-from src.fato_unb.ingestion.models import RawDocument, SourceType
-from src.fato_unb.ingestion.html import fetch_unb_html_document
-from src.fato_unb.ingestion.rss import fetch_unb_rss_feed
+from datetime import UTC, datetime, timezone
+from pydantic import HttpUrl, ValidationError
+from fato_unb.ingestion.models import RawDocument, SourceType
+from fato_unb.ingestion.html import fetch_unb_html_document
+from fato_unb.ingestion.rss import fetch_unb_rss_feed
 
 def test_raw_document_idempotent_hash():
     test_url = "https://noticias.unb.br/exemplo-teste"
@@ -44,3 +44,26 @@ def test_rss_feed_extraction():
         assert isinstance(docs[0], RawDocument)
         assert docs[0].source_type == SourceType.RSS_NEWS
         assert docs[0].title != ""
+
+
+def test_raw_document_accepts_http_url():
+    doc = RawDocument(
+        title="Teste URL",
+        content="Conteúdo",
+        url=HttpUrl("https://noticias.unb.br/exemplo"),
+        source="UnB",
+        source_type=SourceType.RSS_NEWS,
+        published_at=datetime.now(UTC),
+    )
+    assert len(doc.doc_id) == 64
+    assert str(doc.url) == "https://noticias.unb.br/exemplo"
+
+
+def test_clean_html_text_removes_tags():
+    from fato_unb.ingestion.rss import clean_html_text
+
+    raw_html = '<p><img src="https://noticias.unb.br/foto.jpg" />Aviso sobre o <b>RU</b> no feriado.</p>'
+    clean = clean_html_text(raw_html)
+    assert clean == "Aviso sobre o RU no feriado."
+    assert "<img" not in clean
+    assert "https://" not in clean

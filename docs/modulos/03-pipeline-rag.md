@@ -1,46 +1,68 @@
-# 🧠 Módulo de RAG & Checagem (`fato_unb.rag`)
+# Pipeline RAG
 
-**Responsável:** Yan Santos Rodrigues (Engenheiro de IA & Pipeline RAG)  
-**Épico Vinculado:** `[RAG-ENGINE]`  
+**Responsável:** Yan Santos Rodrigues · **Código:** `src/fato_unb/rag/`
 
----
+Transforma os documentos em trechos buscáveis e, na hora da pergunta, encontra os trechos que mais se parecem com a afirmação.
 
-## 🎯 Objetivo do Módulo
+```mermaid
+flowchart LR
+    D[Documento] --> C[Chunker] --> E[Embeddings] --> Q[(Qdrant)]
+    A[Afirmação] --> H[Busca híbrida] --> R[Reranker<br/>opcional] --> T[Retriever] --> EV[Evidências]
+    Q --> H
+```
 
-O módulo `rag` é o núcleo de processamento semântico do **FatoUnB**. Ele transforma documentos textuais semiestruturados (notícias, circulares do DEG, resoluções e editais da SAA) em representações vetoriais de alta precisão, preservando metadados contextuais e preparando a base para buscas híbridas e vereditos sem alucinações.
+## Dados (`models.py`)
 
----
+**`DocumentChunk`** é o que vai para o Qdrant:
 
-## 🏗️ Componentes Implementados
+| Campo | Para quê |
+|---|---|
+| `content` | Trecho com cabeçalho (título, fonte, semestre). É o que vira vetor |
+| `raw_text` | Trecho puro, para citação |
+| `parent_text` | Janela maior ao redor, enviada ao LLM |
+| `chunk_id`, `doc_id`, `chunk_index`, `total_chunks` | Identificação |
+| `title`, `url`, `source`, `semester_ref`, `published_at` | Metadados para filtros e citação |
 
-### 1. Modelos de Dados (`models.py`)
-Contratos estritos baseados em **Pydantic v2** para garantir validação em tempo de execução e serialização determinística.
+**`VereditoJSON`** é a resposta final: veredito, justificativa, fontes e confiança (0 a 1).
 
-* **`DocumentChunk`**: Representa a unidade atômica indexada no banco vetorial.
-  * `chunk_id`: Hash determinístico SHA-256 (`doc_id + chunk_index`) truncado em 16 caracteres.
-  * `doc_id`: ID do documento original de origem.
-  * `content`: Texto do chunk prefixado com o cabeçalho de contexto institucional.
-  * `raw_text`: Trecho original extraído sem formatações adicionais.
-  * `chunk_index` / `total_chunks`: Controle sequencial da posição no documento pai.
-  * Metadados herdados: `title`, `url`, `source`, `semester_ref`.
+## Chunker (`chunker.py`)
 
-* **`VereditoJSON`**: Formato padronizado de saída da análise factual.
-  * `veredito`: Classificação estrita (`CONFIRMADO_OFICIALMENTE`, `BOATO_SEM_REGISTRO`, `DESATUALIZADO_OU_FORA_DE_CONTEXTO`, `INCONCLUSIVO`).
-  * `justificativa`: Texto direto fundamentado exclusivamente nas evidências recuperadas.
-  * `fontes`: Lista de links oficiais (`FonteCitada`) que embasam o veredito.
-  * `confianca`: Pontuação de 0.0 a 1.0 indicando o grau de correspondência semântica.
+O texto é dividido em frases (sem quebrar em abreviações como "Prof." e "Art.") e agrupado em chunks de cerca de **120 palavras**, com **1 frase de sobreposição**. Cada chunk guarda também o `parent_text`, de cerca de 300 palavras.
 
----
+A ideia: **buscar com trechos pequenos** (a afirmação costuma ser uma frase) e **dar contexto grande ao LLM**.
 
-### 2. Chunking Semântico com Injeção de Contexto (`chunker.py`)
-Fatiador de texto projetado para resolver o problema de perda de contexto e corte abrupto de termos em editais e normas da UnB.
+O cabeçalho no `content` ajuda o trecho a lembrar de onde veio:
 
-#### Características do Algoritmo:
-* **Divisão Recursiva por Unidades Lógicas:** Prioriza a quebra por parágrafos duplos (`\n\n`), descendo para sentenças (`. `) e palavras (` `) apenas quando o bloco excede a janela alvo.
-* **Overlap Calibrado:** Mantém uma janela deslizante (padrão: 40 a 50 palavras) entre blocos vizinhos, garantindo continuidade de leitura em regras compostas ou datas.
-* **Injeção de Metadados no Conteúdo (`Context Injection`):** Cada pedaço recebe um cabeçalho fixo antes da vetorização:
-  ```text
-  [Documento: Circular Normativa DEG nº 02/2026]
-  [Fonte: DEG | Ref: 2026/1]
+```text
+[Documento: Calouros comemoram aprovação no PAS]
+[Fonte: noticias.unb.br | Ref: 2026.2]
 
-  Art. 2º O período de ajuste extraordinário ocorrerá entre 10 e 15 de março...
+Esta segunda-feira (9) foi dia de ver gente jovem reunida...
+```
+
+Na avaliação (95 casos), o chunker novo ficou praticamente igual ao anterior (400 palavras): MRR 0,836 contra 0,853. O ganho esperado é a estrutura e o `parent_text`.
+
+## Embeddings (`embeddings.py`)
+
+| | Modelo | Execução |
+|---|---|---|
+| Denso | `intfloat/multilingual-e5-large` | Local (fastembed, ONNX, CPU) |
+| Esparso | `Qdrant/bm25` | Local |
+
+- O e5 exige os prefixos `"query: "` e `"passage: "`. O fastembed não os aplica, então o `EmbeddingService` aplica. Sem eles, a busca piora sem dar erro.
+- No dataset de 95 casos, o e5-large subiu o R@1 de 0,761 para 0,943 sobre o MiniLM, ao custo de cerca de 3,7× mais tempo por consulta e 2,2 GB de memória (comentário em `embeddings.py`).
+- `provider="mock"` gera vetores falsos para testes rápidos.
+
+## Indexação (`pipeline.py`)
+
+`IndexingPipeline.run()` pega os documentos `pending` do staging, divide em chunks, gera os vetores em lotes de 64 e grava no Qdrant. Marca cada documento como `indexed` ou `failed`.
+
+## Busca e reranker
+
+- **Busca híbrida:** significado (denso) + palavras exatas (BM25), combinados por RRF. Detalhes em [Banco Vetorial](02-banco-vetorial.md).
+- **Reranker** (`reranker.py`): modelo que lê a afirmação e o trecho juntos para reordenar os candidatos. Está **desligado por padrão** e ainda não foi medido; liga-se com `RERANKER_MODEL`.
+- **`Retriever`** (`retriever.py`): devolve evidências de páginas diferentes, descartando cópias da mesma página (`#main`, barra final). Cada evidência traz o trecho que casou e o `parent_text`.
+
+## Testes
+
+`tests/test_rag.py`, `test_embedding_config.py`, `test_indexing_pipeline.py` e `test_retrieval_integration.py`.

@@ -17,8 +17,18 @@ Validar quantitativamente a acurácia e a taxa de confiança da IA contra a meta
 
 ---
 
+## 🔎 Avaliação de Recuperação (retrieval)
+* `dataset.py` / `retrieval_dataset.jsonl`: casos de teste (alegação → URL da evidência) e carregamento do corpus.
+* `retrieval.py`: `recall@k` e `MRR` por configuração (`CONFIGS`), sobre uma coleção Qdrant isolada em memória.
+* CLI: `uv run python scripts/avaliar.py --config baseline --falhas`. Detalhes em `docs/modulos/avaliacao/dataset-teste.md`.
+
+---
+
 ## 🧪 Como Executar a Avaliação
 ```bash
+# Instalar as dependências opcionais pesadas de avaliação
+uv sync --extra evaluation
+
 # Gerar os testsets Ragas e do bot a partir de dados.txt
 uv run python -m fato_unb.evaluation.generateTestset
 

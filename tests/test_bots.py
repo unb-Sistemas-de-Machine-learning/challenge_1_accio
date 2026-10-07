@@ -3,14 +3,17 @@ from types import SimpleNamespace
 import pytest
 
 from fato_unb.bots.privacy import scrub
+from fato_unb.llm.clients import LLMError
 from fato_unb.bots.telegram_bot import (
     entidades_mencao_ao_bot,
     extrair_afirmacao,
+    formatar_fontes,
     formatar_veredito,
-    montar_veredito_provisorio,
+    montar_teclado_fontes,
     remover_mencoes,
     verificar_afirmacao_provisoria_com_contextos,
 )
+from fato_unb.rag.models import FonteCitada, VereditoJSON, VereditoType
 
 
 @pytest.mark.parametrize(
@@ -121,107 +124,161 @@ def test_remover_mencoes_sobra_o_resto_do_texto():
     assert remover_mencoes(texto, entidades) == "O RU vai fechar em outubro?"
 
 
-def _fake_ponto(
-    score,
-    title="Notícia Teste",
-    url="https://noticias.unb.br/teste",
-    source="UnB Notícias",
-    content="Conteúdo da fonte.",
+def _veredito_teste(
+    *,
+    veredito=VereditoType.INCONCLUSIVO,
+    justificativa="Justificativa de teste.",
+    fontes=None,
 ):
-    return SimpleNamespace(
-        score=score,
-        payload={
-            "title": title,
-            "url": url,
-            "source": source,
-            "content": content,
-        },
+    return VereditoJSON(
+        veredito=veredito,
+        justificativa=justificativa,
+        fontes=fontes or [],
+        confianca=0.9,
+        afirmacao_analisada="Afirmação de teste.",
     )
 
 
-def test_verificar_afirmacao_retorna_os_contextos_realmente_usados(monkeypatch):
-    pontos = [
-        _fake_ponto(score=0.8),
-        _fake_ponto(score=0.2, url="https://noticias.unb.br/irrelevante"),
+def test_verificar_afirmacao_retorna_contextos_do_fact_checker(monkeypatch):
+    veredito = _veredito_teste(
+        veredito=VereditoType.CONFIRMADO_OFICIALMENTE,
+        fontes=[
+            FonteCitada(
+                title="Notícia",
+                url="https://noticias.unb.br/x",
+                source="UnB Notícias",
+            )
+        ],
+    )
+    evidencias = [
+        SimpleNamespace(contexto="Contexto usado pelo verificador."),
+        SimpleNamespace(contexto="   "),
     ]
-    monkeypatch.setattr("fato_unb.bots.telegram_bot.obter_embedder", lambda: object())
+    checker = SimpleNamespace(
+        verificar=lambda texto: SimpleNamespace(
+            veredito=veredito,
+            evidencias=evidencias,
+        )
+    )
     monkeypatch.setattr(
-        "fato_unb.bots.telegram_bot.buscar",
-        lambda *args, **kwargs: SimpleNamespace(points=pontos),
+        "fato_unb.bots.telegram_bot.obter_fact_checker",
+        lambda: checker,
     )
 
-    veredito, contextos = verificar_afirmacao_provisoria_com_contextos("Afirmação")
+    actual_verdict, contexts = verificar_afirmacao_provisoria_com_contextos(
+        "Afirmação"
+    )
 
-    assert veredito.veredito.value == "INCONCLUSIVO"
-    assert len(veredito.fontes) == 1
-    assert contextos == ["Conteúdo da fonte."]
-
-
-def test_montar_veredito_sem_pontos_relevantes():
-    veredito = montar_veredito_provisorio("O RU vai fechar em outubro?", [])
-
-    assert veredito.afirmacao_analisada == "O RU vai fechar em outubro?"
-    assert veredito.fontes == []
-    assert veredito.confianca == 0.0
+    assert actual_verdict is veredito
+    assert contexts == ["Contexto usado pelo verificador."]
 
 
-def test_montar_veredito_ignora_pontos_abaixo_do_limiar():
-    pontos = [_fake_ponto(score=0.1)]
-    veredito = montar_veredito_provisorio("teste", pontos)
+def test_verificar_afirmacao_sem_cliente_llm_retorna_inconclusivo(monkeypatch):
+    def raise_missing_key():
+        raise LLMError("Chave ausente.")
 
-    assert veredito.fontes == []
-    assert veredito.confianca == 0.1
+    monkeypatch.setattr(
+        "fato_unb.bots.telegram_bot.obter_fact_checker",
+        raise_missing_key,
+    )
 
+    verdict, contexts = verificar_afirmacao_provisoria_com_contextos("Afirmação")
 
-def test_montar_veredito_inclui_fontes_relevantes():
-    pontos = [_fake_ponto(score=0.75, title="RU tem funcionamento normal")]
-    veredito = montar_veredito_provisorio("O RU vai fechar?", pontos)
-
-    assert len(veredito.fontes) == 1
-    assert veredito.fontes[0].title == "RU tem funcionamento normal"
-    assert veredito.confianca == 0.75
+    assert verdict.veredito == VereditoType.INCONCLUSIVO
+    assert contexts == []
 
 
-def test_montar_veredito_remove_fontes_duplicadas_pela_url():
-    pontos = [
-        _fake_ponto(score=0.8, title="Notícia X", url="https://noticias.unb.br/x"),
-        _fake_ponto(score=0.7, title="Notícia X", url="https://noticias.unb.br/x"),
-        _fake_ponto(score=0.6, title="Notícia Y", url="https://noticias.unb.br/y"),
-    ]
-    veredito = montar_veredito_provisorio("teste", pontos)
+def test_verificar_afirmacao_com_raise_on_error_propaga_falha_llm(monkeypatch):
+    error = LLMError("Chave ausente.")
 
-    assert len(veredito.fontes) == 2
-    assert {str(f.url) for f in veredito.fontes} == {
-        "https://noticias.unb.br/x",
-        "https://noticias.unb.br/y",
-    }
+    def raise_error():
+        raise error
+
+    monkeypatch.setattr(
+        "fato_unb.bots.telegram_bot.obter_fact_checker",
+        raise_error,
+    )
+
+    with pytest.raises(LLMError) as exc_info:
+        verificar_afirmacao_provisoria_com_contextos(
+            "Afirmação",
+            raise_on_error=True,
+        )
+
+    assert exc_info.value is error
 
 
 def test_formatar_veredito_escapa_markdown():
-    veredito = montar_veredito_provisorio("teste.", [])
-    texto = formatar_veredito(veredito)
+    texto = formatar_veredito(_veredito_teste(justificativa="teste."))
 
     assert "\\." in texto
     assert "Confiança:" in texto
 
 
 @pytest.mark.parametrize(
-    ("veredito", "emoji"),
+    ("verdict_type", "emoji"),
     [
-        ("CONFIRMADO_OFICIALMENTE", "✅"),
-        ("BOATO_SEM_REGISTRO", "❌"),
-        ("DESATUALIZADO_OU_FORA_DE_CONTEXTO", "⚠️"),
-        ("INCONCLUSIVO", "❓"),
+        (VereditoType.CONFIRMADO_OFICIALMENTE, "✅"),
+        (VereditoType.BOATO_SEM_REGISTRO, "❌"),
+        (VereditoType.DESATUALIZADO_OU_FORA_DE_CONTEXTO, "⚠️"),
+        (VereditoType.INCONCLUSIVO, "❓"),
     ],
 )
-def test_formatar_veredito_suporta_todos_os_estados(veredito, emoji):
-    from fato_unb.rag.models import VereditoJSON, VereditoType
+def test_formatar_veredito_suporta_todos_os_estados(verdict_type, emoji):
+    assert formatar_veredito(
+        _veredito_teste(veredito=verdict_type)
+    ).startswith(f"{emoji} ")
 
-    resposta = VereditoJSON(
-        veredito=VereditoType(veredito),
-        justificativa="Justificativa.",
-        confianca=0.5,
-        afirmacao_analisada="Afirmação.",
+
+def test_formatar_veredito_nao_inclui_fontes_no_corpo():
+    veredito = VereditoJSON(
+        veredito=VereditoType.CONFIRMADO_OFICIALMENTE,
+        justificativa="teste",
+        fontes=[FonteCitada(title="Notícia", url="https://noticias.unb.br/x", source="UnB Notícias")],
+        confianca=0.9,
+        afirmacao_analisada="teste",
+    )
+    texto = formatar_veredito(veredito)
+
+    assert "Fontes" not in texto
+
+
+def test_formatar_fontes_lista_titulo_e_link():
+    fontes = [FonteCitada(title="Notícia X", url="https://noticias.unb.br/x", source="UnB Notícias")]
+    texto = formatar_fontes(fontes)
+
+    assert "Fontes" in texto
+    assert "Notícia X" in texto
+    assert "noticias.unb.br/x" in texto
+
+
+def test_montar_teclado_fontes_vazio_sem_fontes():
+    veredito = VereditoJSON(
+        veredito=VereditoType.INCONCLUSIVO,
+        justificativa="teste",
+        fontes=[],
+        confianca=0.0,
+        afirmacao_analisada="teste",
     )
 
-    assert formatar_veredito(resposta).startswith(f"{emoji} ")
+    assert montar_teclado_fontes(veredito) is None
+
+
+def test_montar_teclado_fontes_cria_botao_com_contagem():
+    veredito = VereditoJSON(
+        veredito=VereditoType.CONFIRMADO_OFICIALMENTE,
+        justificativa="teste",
+        fontes=[
+            FonteCitada(title="A", url="https://noticias.unb.br/a", source="UnB Notícias"),
+            FonteCitada(title="B", url="https://noticias.unb.br/b", source="UnB Notícias"),
+        ],
+        confianca=0.9,
+        afirmacao_analisada="teste",
+    )
+
+    teclado = montar_teclado_fontes(veredito)
+
+    assert teclado is not None
+    botao = teclado.inline_keyboard[0][0]
+    assert "(2)" in botao.text
+    assert botao.callback_data.startswith("fontes:")

@@ -1,10 +1,18 @@
 site_name: FatoUnB - Documentação Técnica
 site_description: Sistema automatizado de fact-checking e combate a boatos na Universidade de Brasília criado para a disciplina de Sistemas de Machine Learning 2026.2.
 site_author: Equipe Accio
+repo_url: https://github.com/unb-Sistemas-de-Machine-learning/challenge_1_accio
+repo_name: challenge_1_accio
+
+# Planos e specs internos de desenvolvimento não entram no site
+exclude_docs: |
+  superpowers/
 
 theme:
   name: material
   language: pt-BR
+  logo: assets/logo.jpeg
+  favicon: assets/logo.jpeg
   palette:
     # Modo Escuro
     - scheme: slate
@@ -25,6 +33,9 @@ theme:
     - navigation.tracking
     - navigation.sections
     - navigation.top
+    - navigation.tabs
+    - navigation.footer
+    - search.highlight
     - content.code.copy
     - content.code.annotate
 
@@ -34,6 +45,13 @@ plugins:
       handlers:
         python:
           paths: [src]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_symbol_type_heading: true
+            members_order: source
+            heading_level: 2
 
 markdown_extensions:
   - admonition
@@ -59,18 +77,28 @@ markdown_extensions:
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 nav:
-  - Início: 
-    - index.md
-  - Guiding Questions: 
-    - guiding_questions.md
+  - Início:
+    - Visão Geral: index.md
+    - Como Executar: execucao.md
+    - Guiding Questions: guiding_questions.md
   - Módulos:
-      - Coleta de Dados: modulos/01-coleta-dados.md
-      - Banco Vetorial: modulos/02-banco-vetorial.md
-      - Pipeline RAG & Checagem: modulos/03-pipeline-rag.md
-      - Infra e Modelos: modulos/04-infra-modelos-local.md
-      - Métricas e Benchmark: modulos/05-metricas-benchmark.md
-      - Avaliações:
-        - Dataset de Teste: modulos/avaliacao/dataset-teste.md
-        - Nuvem vs. Local: modulos/avaliacao/comparacao-nuvem-local.md
-        - Avaliação RAG: modulos/avaliacao/avaliacao-rag.md
-        - Resultados: modulos/avaliacao/resultados-finais.md
+    - Coleta de Dados: modulos/01-coleta-dados.md
+    - Banco Vetorial e Staging: modulos/02-banco-vetorial.md
+    - Pipeline RAG: modulos/03-pipeline-rag.md
+    - Checagem com LLM e Guardrails: modulos/06-checagem-llm.md
+    - Bot do Telegram e Privacidade: modulos/07-bot-telegram.md
+    - Infra e Modelos: modulos/04-infra-modelos-local.md
+  - Avaliação:
+    - Métricas e Benchmark: modulos/05-metricas-benchmark.md
+    - Dataset de Teste: modulos/avaliacao/dataset-teste.md
+    - Avaliação do RAG: modulos/avaliacao/avaliacao-rag.md
+    - Nuvem vs. Local: modulos/avaliacao/comparacao-nuvem-local.md
+    - Resultados Finais: modulos/avaliacao/resultados-finais.md
+  - Referência da API:
+    - referencia/index.md
+    - Ingestão: referencia/ingestion.md
+    - Staging: referencia/storage.md
+    - Banco Vetorial: referencia/vectorstore.md
+    - RAG: referencia/rag.md
+    - LLM: referencia/llm.md
+    - Bot: referencia/bots.md
