@@ -1,10 +1,26 @@
-import asyncio
 import json
 from datetime import UTC, datetime
 
 import pymupdf
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from fato_unb.ingestion import crawler
+from fato_unb.storage.db import Base
+from fato_unb.storage.repository import StagingRepository
+
+
+@pytest.fixture
+async def test_repo():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    repo = StagingRepository(session_factory=session_factory)
+    yield repo
+    await engine.dispose()
 
 
 class FakeResponse:
@@ -63,7 +79,8 @@ class FakeSession:
         raise AssertionError(f"URL inesperada no teste: {url}")
 
 
-def test_crawler_discovers_and_saves_pdf_from_saa(monkeypatch, tmp_path):
+@pytest.mark.anyio
+async def test_crawler_discovers_and_saves_pdf_from_saa(monkeypatch, tmp_path, test_repo):
     session = FakeSession()
     monkeypatch.setattr(crawler.aiohttp, "ClientSession", lambda: session)
     monkeypatch.setattr(crawler, "START_URLS", [session.listing_url])
@@ -74,7 +91,7 @@ def test_crawler_discovers_and_saves_pdf_from_saa(monkeypatch, tmp_path):
     monkeypatch.setattr(crawler.asyncio, "sleep", no_wait)
     output_file = tmp_path / "documents.jsonl"
 
-    asyncio.run(crawler.run_crawler(str(output_file)))
+    await crawler.run_crawler(str(output_file), repository=test_repo)
 
     documents = [
         json.loads(line)
