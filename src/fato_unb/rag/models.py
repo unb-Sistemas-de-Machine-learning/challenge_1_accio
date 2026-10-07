@@ -1,5 +1,5 @@
 from enum import Enum
-
+from datetime import datetime
 from pydantic import BaseModel, Field, HttpUrl
 
 
@@ -19,6 +19,10 @@ class DocumentChunk(BaseModel):
         ..., description="Texto enriquecido com metadados para busca vetorial"
     )
     raw_text: str = Field(..., description="Trecho puro sem cabeçalhos")
+    parent_text: str | None = Field(
+        None,
+        description="Trecho maior ao redor do chunk (sentence-window), para dar contexto ao LLM",
+    )
     chunk_index: int = Field(..., description="Posição do chunk no documento")
     total_chunks: int = Field(..., description="Total de chunks gerados para este doc")
 
@@ -27,6 +31,7 @@ class DocumentChunk(BaseModel):
     url: HttpUrl
     source: str
     semester_ref: str | None = None
+    published_at: datetime
 
 
 class FonteCitada(BaseModel):

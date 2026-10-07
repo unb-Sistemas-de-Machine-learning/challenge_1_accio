@@ -7,11 +7,10 @@
     - https://saa.unb.br/ - Secretaria de Administração Acadêmica - HTML e PDFs para informativos
     - https://dpg.unb.br - Decanato de Pós-graduação - HTML
 2. Será utilizada arquitetura multi-agente, se sim quais os agentes?
-    - Multi-agentes:
-        - Supervisor, recebe o prompt e rapassa para o consultor
-        - Consultor, Devolve a precisão utilizando a base de conhecimentos RAG
+    - Planejado: um Supervisor (recebe o prompt e repassa) e um Consultor (responde com o RAG).
+    - Implementado: um fluxo único, sem agentes: guardrails de entrada → busca → LLM → guardrails de saída. Ver [Checagem com LLM](modulos/06-checagem-llm.md).
 3. Qual o modelo de LLM será utilizado (acessível e barato)?
-    - Ainda não foi decidido.
+    - Gemini 3.1 Flash-Lite (free tier disponível). O Claude Haiku 4.5 também está implementado. Ver [Infra e Modelos](modulos/04-infra-modelos-local.md).
 4. Quão viável é a implementação de um bot em grupos do Whatsapp em um grupo universitário?
     - Não é viável. A implementação de um bot em grupos de WhatsApp requer uma autorização da Meta. Qualquer outra forma de contornar isso é viola os termos de serviço. Será utilizado o Telegram como forma de implementação do bot.
 5. Quais guardrails devem ser definidos para a privacidade de usuários?
@@ -57,4 +56,4 @@
                 - É estritamente proibido o envio de mensagens em massa (broadcasts não solicitados) dentro de grupos. O bot deve aguardar que o usuário inicie o contato ou mencione o serviço.
 
 7. Como ele buscará os dados? consulta web direta ou em base de conhecimentos (RAG)?
-    - RAG com webscraping, feito a cada 1 hora.
+    - RAG com webscraping, feito a cada 1 hora. O bot não consulta a web na hora da pergunta, só a base indexada. Ver [Coleta de Dados](modulos/01-coleta-dados.md).
