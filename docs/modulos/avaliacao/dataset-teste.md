@@ -78,3 +78,68 @@ uv run python scripts/avaliar.py --config baseline --raw   # sem deduplicar o co
   `DESATUALIZADO_OU_FORA_DE_CONTEXTO` (número que pertence a outro semestre); vale confirmar a convenção.
 - Casos `desatualizada` e `temporal` assumem "hoje" como fim de setembro de 2026.
 - O corpus não contém nenhum documento da ADUnB.
+
+
+## Testset sintético para RAGAS
+
+O script `src/fato_unb/evaluation/generateTestset.py` gera outro conjunto de dados,
+independente do dataset de recuperação acima. Ele lê `dados.txt` na raiz do projeto
+como JSONL, transforma cada registro em um documento com título e conteúdo e remove
+duplicatas pelo campo `doc_id`. Em seguida, usa as transformações padrão do RAGAS
+para extrair informações e criar perguntas sintéticas com contextos de referência.
+
+O gerador usa Ollama local: `qwen2.5:7b` para gerar o testset e as afirmações,
+`qwen2.5:3b` para as transformações e `bge-m3` para embeddings. As instruções aos
+modelos pedem textos em português brasileiro. O script solicita 30 exemplos, mas
+o total efetivamente gerado pode ser menor ou variar conforme os documentos e o
+processamento dos modelos.
+
+Para cada exemplo gerado, o script distribui os rótulos `VERDADEIRO` e `FALSO` em
+quantidades tão iguais quanto possível. A afirmação é criada a partir da pergunta
+sintética e dos contextos de referência: deve ser sustentada diretamente por eles
+quando verdadeira, ou contradizer um fato explícito quando falsa. O CSV também
+registra metadados do sintetizador, personas quando disponíveis e as fontes
+associadas aos contextos de referência.
+
+
+### Como gerar
+
+Execute a partir da raiz do repositório, onde ficam `dados.txt` e o arquivo de
+saída. Instale as dependências opcionais e obtenha os modelos necessários:
+
+```bash
+uv sync --extra evaluation --dev
+ollama pull qwen2.5:7b
+ollama pull qwen2.5:3b
+ollama pull bge-m3
+```
+
+Confirme que o serviço Ollama está em execução e então rode:
+
+```bash
+uv run python -m fato_unb.evaluation.generateTestset
+```
+
+O script cria ou **sobrescreve** `ragas_testset_local.csv` na raiz. Esse CSV é a
+entrada da avaliação RAGAS, não o dataset de recuperação
+`src/fato_unb/evaluation/retrieval_dataset.jsonl` nem o CSV de resultados da
+avaliação. Consulte [Métricas e Benchmark](../05-metricas-benchmark.md) e
+[Como Executar](../../execucao.md#8-criar-o-testset-e-avaliar-com-ragas) para
+entender a avaliação e executar o avaliador.
+
+### Limitações do testset sintético
+
+- As instruções pedem português brasileiro e saídas estruturadas, mas o Qwen pode
+  gerar conteúdo em outro idioma, fora do formato solicitado ou com erros factuais.
+  A afirmação só é verificada pelo script quanto a ser texto não vazio; sua
+  fidelidade aos contextos não é validada automaticamente. Revise as amostras e
+  os rótulos antes de usar os resultados como evidência de qualidade.
+- Se o RAGAS não conseguir interpretar a saída de uma extração de temas, o script
+  registra um aviso e ignora aquele trecho; isso pode reduzir a quantidade de
+  amostras geradas em relação às 30 solicitadas. Outros erros de geração podem
+  interromper a execução.
+- Metadados como persona, estilo e comprimento dependem do que foi produzido para
+  cada amostra e podem ficar ausentes no CSV.
+- A geração depende dos modelos e do corpus disponíveis localmente, pode ser
+  demorada e não garante exatamente a mesma quantidade de exemplos em cada
+  execução.

@@ -7,8 +7,6 @@
 | Ação | O que acontece |
 |---|---|
 | `/checar <afirmação>` | Checa o texto escrito depois do comando |
-| Responder uma mensagem com `/checar` | Checa o texto da mensagem respondida |
-| `@bot <afirmação>` | Checa o texto da menção |
 | `/privacidade` | Explica como os dados são tratados |
 | `/help`, `/start` | Ajuda e boas-vindas |
 

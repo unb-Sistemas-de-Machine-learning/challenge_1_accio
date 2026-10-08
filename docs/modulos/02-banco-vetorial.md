@@ -31,8 +31,6 @@ Cada ponto tem dois vetores, **com nome**:
 | `dense` | Denso, distância Cosine | Achar trechos com o mesmo significado |
 | `sparse` | Esparso (BM25) | Achar palavras exatas: siglas, nomes, números |
 
-Por que assim:
-
 - **Vetores com nome:** uma coleção criada com vetor sem nome não aceita outro vetor depois sem ser recriada.
 - **Slot esparso declarado desde o início**, para a busca híbrida chegar sem recriar a coleção.
 - **Tamanho do vetor lido do modelo** (`embedder.vector_dimension`), nunca escrito à mão. Trocar de modelo não exige mexer no código.
