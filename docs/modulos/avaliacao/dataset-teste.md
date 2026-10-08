@@ -101,22 +101,6 @@ quando verdadeira, ou contradizer um fato explícito quando falsa. O CSV também
 registra metadados do sintetizador, personas quando disponíveis e as fontes
 associadas aos contextos de referência.
 
-### Limitações do testset sintético
-
-- As instruções pedem português brasileiro e saídas estruturadas, mas o Qwen pode
-  gerar conteúdo em outro idioma, fora do formato solicitado ou com erros factuais.
-  A afirmação só é verificada pelo script quanto a ser texto não vazio; sua
-  fidelidade aos contextos não é validada automaticamente. Revise as amostras e
-  os rótulos antes de usar os resultados como evidência de qualidade.
-- Se o RAGAS não conseguir interpretar a saída de uma extração de temas, o script
-  registra um aviso e ignora aquele trecho; isso pode reduzir a quantidade de
-  amostras geradas em relação às 30 solicitadas. Outros erros de geração podem
-  interromper a execução.
-- Metadados como persona, estilo e comprimento dependem do que foi produzido para
-  cada amostra e podem ficar ausentes no CSV.
-- A geração depende dos modelos e do corpus disponíveis localmente, pode ser
-  demorada e não garante exatamente a mesma quantidade de exemplos em cada
-  execução.
 
 ### Como gerar
 
@@ -142,3 +126,20 @@ entrada da avaliação RAGAS, não o dataset de recuperação
 avaliação. Consulte [Métricas e Benchmark](../05-metricas-benchmark.md) e
 [Como Executar](../../execucao.md#8-criar-o-testset-e-avaliar-com-ragas) para
 entender a avaliação e executar o avaliador.
+
+### Limitações do testset sintético
+
+- As instruções pedem português brasileiro e saídas estruturadas, mas o Qwen pode
+  gerar conteúdo em outro idioma, fora do formato solicitado ou com erros factuais.
+  A afirmação só é verificada pelo script quanto a ser texto não vazio; sua
+  fidelidade aos contextos não é validada automaticamente. Revise as amostras e
+  os rótulos antes de usar os resultados como evidência de qualidade.
+- Se o RAGAS não conseguir interpretar a saída de uma extração de temas, o script
+  registra um aviso e ignora aquele trecho; isso pode reduzir a quantidade de
+  amostras geradas em relação às 30 solicitadas. Outros erros de geração podem
+  interromper a execução.
+- Metadados como persona, estilo e comprimento dependem do que foi produzido para
+  cada amostra e podem ficar ausentes no CSV.
+- A geração depende dos modelos e do corpus disponíveis localmente, pode ser
+  demorada e não garante exatamente a mesma quantidade de exemplos em cada
+  execução.
