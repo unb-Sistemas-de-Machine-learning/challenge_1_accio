@@ -123,6 +123,6 @@ indefinido (`NaN`).
 
 O avaliador também calcula `acuracia_do_veredito`, que é uma comparação direta com o rótulo e não uma métrica RAGAS. O juiz usa `qwen2.5:3b` e os embeddings do avaliador usam `bge-m3`, ambos via Ollama. `answer_relevancy` não faz parte da configuração atual.
 
-O CSV e o resumo atualmente registrados (`resultados_teste.csv` e `resultados_teste_resumo.json`) contêm somente **2 de 20** exemplos avaliados. As médias dessa amostra são: faithfulness 0,000; context recall 0,550; context precision 0,708; answer correctness 0,476; acurácia do veredito 0,500 (1/2). São resultados preliminares de uma amostra muito pequena, não uma medição final nem evidência suficiente para comparar modelos. O modo de busca mede recuperação contra evidência rotulada; o modo de veredito mede o fluxo real com LLM; RAGAS pontua a resposta e os contextos em um testset sintético. Não se deve misturar os denominadores ou interpretar essas métricas como equivalentes.
+O modo de busca mede recuperação contra evidência rotulada; o modo de veredito mede o fluxo real com LLM; RAGAS pontua a resposta e os contextos em um testset sintético. Não se deve misturar os denominadores ou interpretar essas métricas como equivalentes.
 
-Consulte [Avaliação do RAG](avaliacao/avaliacao-rag.md), [Dataset de Teste](avaliacao/dataset-teste.md) e [Resultados Finais](avaliacao/resultados-finais.md) para os números e limitações.
+Consulte [Avaliação do RAG](avaliacao/avaliacao-rag.md) para o benchmark, [Dataset de Teste](avaliacao/dataset-teste.md) para os conjuntos usados e [Como Executar](../execucao.md#8-criar-o-testset-e-avaliar-com-ragas) para gerar o testset e executar a avaliação.

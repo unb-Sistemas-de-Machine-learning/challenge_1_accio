@@ -63,12 +63,63 @@ uv run pytest tests/ -v
 
 Os testes de `tests/test_vectorstore.py` que usam o Qdrant real precisam do container no ar. Os demais não precisam de Docker.
 
-## 8. Avaliação
+## 8. Criar o testset e avaliar com RAGAS
+
+Esta avaliação usa `dados.txt` para gerar o testset e depois testa as afirmações
+contra o verificador do bot. Execute os comandos a partir da raiz do repositório.
+
+!!! warning "Memória"
+    RAM estimada para os modelos: `qwen2.5:7b` **4,7 GB**; `qwen2.5:3b`
+    **1,9 GB**; `bge-m3` **1,2 GB**; os três juntos **7,8 GB**. A RAM real
+    pode ser maior conforme o contexto e o uso do sistema. Reserve memória
+    adicional para o Docker, que também executa Qdrant e PostgreSQL; o consumo
+    varia conforme o tamanho do corpus e do índice, e não há um limite fixo
+    configurado no `docker-compose.yml`.
+
+### Preparar dependências e modelos
 
 ```bash
-uv run python scripts/avaliar.py --config baseline --falhas   # busca
-uv run python scripts/avaliar_vereditos.py --falhas           # vereditos (usa o LLM)
+uv sync --extra evaluation --dev
+ollama pull qwen2.5:7b
+ollama pull qwen2.5:3b
+ollama pull bge-m3
 ```
+
+Com o Ollama em execução, gere o testset:
+
+```bash
+uv run python -m fato_unb.evaluation.generateTestset
+```
+
+O comando cria ou substitui `ragas_testset_local.csv` na raiz do projeto.
+
+### Avaliar o bot
+
+O modo `--bot` consulta o Qdrant e usa `GEMINI_API_KEY` do `.env`. Para testar
+uma linha:
+
+```bash
+uv run python -m fato_unb.evaluation.evaluator --bot --limit 1 --output ./resultados_ragas.csv
+```
+
+Para avaliar o testset inteiro, omita `--limit`:
+
+```bash
+uv run python -m fato_unb.evaluation.evaluator --bot --output ./resultados_ragas.csv
+```
+
+Para continuar uma execução interrompida, mantenha o mesmo testset e arquivo de
+saída; aumente o limite e acrescente `--resume`:
+
+```bash
+uv run python -m fato_unb.evaluation.evaluator --bot --limit 5 --output ./resultados_ragas.csv
+uv run python -m fato_unb.evaluation.evaluator --bot --limit 10 --output ./resultados_ragas.csv --resume
+```
+
+São gerados `resultados_ragas.csv` com as respostas e métricas,
+`resultados_ragas_resumo.json` com as médias e
+`resultados_ragas.csv.checkpoint.json` para retomada. Não gere novamente o
+testset antes de retomar a mesma avaliação.
 
 ## 9. Documentação
 

@@ -38,14 +38,28 @@ Gemini 3.1 Flash-Lite, índice e5, 81 casos rotulados (resultados completos em [
 
 O `ragas_testset_local.csv` atualmente registrado tem **20 exemplos**: 10 rotulados `VERDADEIRO` e 10 `FALSO`; são 10 perguntas específicas de etapa única e 10 de múltiplas etapas. O script gerador solicita 30 exemplos, então a quantidade atual do CSV não deve ser tomada como o tamanho garantido de uma nova geração.
 
-Há **2 linhas avaliadas de 20** em `resultados_teste.csv`. O resumo salvo em `resultados_teste_resumo.json` apresenta:
+Resultados de **15 testes**:
 
-| Métrica | Média nas 2 linhas |
-|---|---:|
-| Faithfulness (`fidelidade_ao_contexto`) | 0,000 |
-| Context Recall (`cobertura_do_contexto`) | 0,550 |
-| Context Precision (`precisao_do_contexto`) | 0,708 |
-| Answer Correctness (`correcao_da_resposta`) | 0,476 |
-| Acurácia do veredito | 0,500 (1/2) |
+| Teste | Fidelidade ao contexto | Cobertura do contexto | Precisão do contexto | Correção da resposta |
+|---:|---:|---:|---:|---:|
+| 1 | 0 | 0,5 | 0,416666667 | 0,38771298 |
+| 2 | 0 | 0 | 1 | 0,375905679 |
+| 3 | 0 | 0,5 | 0,333333333 | 0,486824344 |
+| 4 | 0 | 0,5 | 1 | 0,547839233 |
+| 5 | 0,333333333 | 0,5 | 0 | 0,609355509 |
+| 6 | 0 | 1 | 0,25 | 0,347145339 |
+| 7 | 0 | 0 | 1 | 0,766936671 |
+| 8 | 0,75 | 1 | 0,333333333 | 0,732893995 |
+| 9 | 0 | 0,333333333 | 1 | 0,381738537 |
+| 10 | 0 | 0,5 | 1 | 0,403400374 |
+| 11 | 0,25 | 0 | 0,75 | 0,401825812 |
+| 12 | 0,4 | 0,666666667 | 1 | 0,536376433 |
+| 13 | 0 | — | 0 | 0,525915744 |
+| 14 | 0,5 | 0,666666667 | 0 | 0,165215931 |
+| 15 | 0 | 0,333333333 | 1 | 0,387161577 |
+| **Média** | **0,148888889** | **0,464285714** | **0,605555556** | **0,470416544** |
+| **Mediana** | **0** | **0,5** | **0,75** | **0,403400374** |
 
-Essas notas são **preliminares**: duas observações não representam o desempenho do sistema e não permitem conclusões sobre as métricas. O CSV de resultados contém as respostas, fontes, contextos e notas dessas linhas; o resumo contém as médias. Para concluir a avaliação, é necessário processar o testset completo, revisar erros e confirmar que a execução terminou sem falhas por linha.
+`—` indica que a cobertura do contexto não tem valor registrado no teste 13. Os valores agregados de cobertura consideram os resultados disponíveis. A [planilha detalhada com os resultados](https://docs.google.com/spreadsheets/d/1o5Rf38Njlrxv3jkOVhR_rFxg3QDUjkVoReAsCGxzYGk/edit?usp=sharing) também pode ser consultada.
+
+Para entender o significado das métricas, consulte [Métricas e Benchmark](../05-metricas-benchmark.md). Os passos para gerar o testset e executar a avaliação pelo terminal estão em [Como Executar](../../execucao.md#8-criar-o-testset-e-avaliar-com-ragas).
